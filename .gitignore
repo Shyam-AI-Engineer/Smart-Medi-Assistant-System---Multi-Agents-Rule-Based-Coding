@@ -1,0 +1,157 @@
+# Environment Variables (NEVER commit these!)
+.env
+.env.local
+.env.*.local
+*.env
+
+# Virtual Environment
+venv/
+env/
+ENV/
+.venv
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.hypothesis/
+*.cover
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+*.sublime-project
+*.sublime-workspace
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+*.sql
+database.db
+
+# Logs
+*.log
+logs/
+*.log.*
+
+# Node (Frontend)
+node_modules/
+npm-debug.log
+npm-debug.log.*
+yarn-debug.log
+yarn-error.log
+.next/
+out/
+dist/
+build/
+
+# OS
+.DS_Store
+Thumbs.db
+*.tmp
+
+# IDE specific
+.vscode/settings.json
+.vscode/launch.json
+.history/
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+*~
+.~*
+
+# Docker
+docker-compose.override.yml
+.dockerignore
+
+# API Keys & Secrets (CRITICAL!)
+.env
+.env.local
+.env.*.local
+.aws/
+.ssh/
+secrets/
+private_key*
+*.pem
+
+# Data folders (if storing sensitive data locally)
+data/
+*.csv
+*.xlsx
+*.json (be careful with this)
+
+# MacOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+
+# Large files
+*.tar.gz
+*.zip
+*.rar
+
+# Migrations (local-only, regenerated on deploy)
+# backend/migrations/versions/  # Uncomment if you don't want to track migrations
+
+# Cache
+.cache/
+*.cache
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+
+# Stray OS files
+*.bak
+*.swp
+*~
+.~*
+
+# IDE temp files
+.flake8
+.pylintrc
+
+# Keep these rules but adapt as needed:
+# - Never commit: .env, secrets, API keys, passwords
+# - Never commit: node_modules (regenerate with npm install)
+# - Never commit: __pycache__, .pytest_cache
+# - Safe to commit: requirements.txt, package.json, .env.example, source code
