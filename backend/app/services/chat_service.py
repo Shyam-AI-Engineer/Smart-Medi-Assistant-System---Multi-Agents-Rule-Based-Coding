@@ -1,14 +1,15 @@
 """Chat service - orchestrates AI agents, FAISS, and persistence."""
 import logging
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any
 from datetime import datetime
 from sqlalchemy.orm import Session
 
-from app.models import ChatHistory, Patient, User
+from app.models import ChatHistory, Patient
 from app.services.euri_service import EuriService
 from app.services.faiss_service import FAISSService
 from app.agents.orchestrator import OrchestratorAgent
 from app.agents.clinical_agent import ClinicalAgent
+from app.agents.triage_agent import TriageAgent
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +44,7 @@ class ChatService:
         self.faiss = FAISSService()
         self.orchestrator = OrchestratorAgent()
         self.clinical_agent = ClinicalAgent()
+        self.triage_agent = TriageAgent()
 
     def handle_message(
         self,
@@ -266,8 +268,7 @@ class ChatService:
                 )
 
             elif agent_name == "triage_agent":
-                # TODO: Implement triage agent
-                return self.clinical_agent.answer_medical_question(
+                return self.triage_agent.assess_urgency(
                     message,
                     patient_info=patient_info,
                 )
