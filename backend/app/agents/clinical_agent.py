@@ -109,7 +109,7 @@ class ClinicalAgent:
                 "sources": sources,
                 "confidence_score": min(0.99, avg_relevance),  # Cap at 0.99
                 "agent_used": self.agent_name,
-                "tokens_used": len(response_text.split()) * 1.3,  # Estimate
+                "tokens_used": int(len(response_text.split()) * 1.3),
                 "context_documents_used": len(context_docs),
             }
 

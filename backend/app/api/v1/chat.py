@@ -237,8 +237,7 @@ def health_check(db: Session = Depends(get_db)) -> dict:
         # Check Euri
         euri_ok = False
         try:
-            health = service.euri.health_check()
-            euri_ok = health.get("overall", False)
+            euri_ok = bool(service.euri.health_check())
         except Exception as e:
             logger.warning(f"Euri health check failed: {e}")
 
