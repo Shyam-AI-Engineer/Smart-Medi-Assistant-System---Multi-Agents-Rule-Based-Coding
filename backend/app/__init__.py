@@ -1,4 +1,11 @@
 """FastAPI app factory."""
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Load .env FIRST, before anything else
+env_file = Path(__file__).parent.parent / ".env"
+load_dotenv(dotenv_path=env_file)
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import logging

@@ -1,6 +1,6 @@
 """User model - accounts for patients, doctors, and admins."""
 from sqlalchemy import String, Boolean, Enum
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 import enum
 from .base import BaseModel
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -43,6 +43,9 @@ class User(BaseModel):
         default=UserRole.PATIENT
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    # Relationship to Patient profile (one-to-one)
+    patient_profile: Mapped["Patient"] = relationship("Patient", back_populates="user", uselist=False)
 
     def set_password(self, password: str) -> None:
         """Hash password with bcrypt before storing.

@@ -7,7 +7,15 @@ Or with:
     python main.py
 """
 import os
+from pathlib import Path
+from dotenv import load_dotenv
 import uvicorn
+
+# Load environment variables from .env file (explicit path)
+env_file = Path(__file__).parent / ".env"
+print(f"Loading .env from: {env_file}")
+load_dotenv(dotenv_path=env_file)
+
 from app import app
 
 

@@ -5,20 +5,24 @@ import logging
 from typing import Optional, Dict
 from datetime import datetime, timedelta
 from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthCredentials
+from fastapi.security import HTTPBearer
 
 logger = logging.getLogger(__name__)
 
 JWT_SECRET = os.getenv("JWT_SECRET_KEY", "dev-secret-change-in-production")
 JWT_ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
+REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", "7"))
+
+if JWT_SECRET == "dev-secret-change-in-production":
+    logger.warning("Using default JWT_SECRET — set JWT_SECRET_KEY in .env")
 
 
 security = HTTPBearer()
 
 
 def get_current_user(
-    credentials: HTTPAuthCredentials = Depends(security),
+    credentials = Depends(security),
 ) -> Dict[str, any]:
     """
     Validate JWT token and extract user info.
@@ -35,12 +39,7 @@ def get_current_user(
     token = credentials.credentials
 
     try:
-        payload = jwt.decode(
-            token,
-            JWT_SECRET,
-            algorithms=[JWT_ALGORITHM]
-        )
-
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
         user_id: str = payload.get("user_id")
         email: str = payload.get("email")
         role: str = payload.get("role", "patient")
@@ -52,14 +51,10 @@ def get_current_user(
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
-        return {
-            "user_id": user_id,
-            "email": email,
-            "role": role,
-        }
+        return {"user_id": user_id, "email": email, "role": role}
 
     except jwt.ExpiredSignatureError:
-        logger.warning(f"Token expired")
+        logger.warning("Token expired")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token expired",
@@ -121,3 +116,30 @@ def create_access_token(
         algorithm=JWT_ALGORITHM
     )
     return encoded_jwt
+
+
+def create_refresh_token(user_id: str, email: str) -> str:
+    """Create long-lived JWT refresh token (default 7 days)."""
+    expire = datetime.utcnow() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+    payload = {
+        "user_id": user_id,
+        "email": email,
+        "token_type": "refresh",
+        "exp": expire,
+    }
+    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+
+def verify_refresh_token(token: str) -> Optional[Dict]:
+    """Verify a refresh token and return its payload, or None if invalid."""
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        if payload.get("token_type") != "refresh":
+            return None
+        return payload
+    except jwt.ExpiredSignatureError:
+        logger.warning("Refresh token expired")
+        return None
+    except jwt.InvalidTokenError as e:
+        logger.warning(f"Invalid refresh token: {e}")
+        return None

@@ -52,7 +52,7 @@ class Patient(BaseModel):
     )
 
     # Relationship back to User
-    user: Mapped[User] = relationship(User, backref="patient_profile")
+    user: Mapped[User] = relationship(User, back_populates="patient_profile")
 
     def __repr__(self) -> str:
         return f"<Patient {self.user_id} - {self.user.full_name if self.user else 'Unknown'}>"

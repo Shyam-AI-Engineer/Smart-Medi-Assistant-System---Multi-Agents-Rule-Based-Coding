@@ -16,7 +16,7 @@ from app.extensions import get_db
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/v1/chat", tags=["chat"])
+router = APIRouter(prefix="/chat", tags=["chat"])
 
 
 @router.post(
