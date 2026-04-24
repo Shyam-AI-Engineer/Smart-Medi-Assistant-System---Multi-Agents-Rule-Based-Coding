@@ -9,9 +9,19 @@ load_dotenv(dotenv_path=env_file)
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import logging
+import sys
 
 from app.extensions import init_db
 from app.api.v1 import api_router
+
+# Configure logging for the application
+logging.basicConfig(
+    level=logging.DEBUG,
+    format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
+    handlers=[
+        logging.StreamHandler(sys.stdout),
+    ],
+)
 
 logger = logging.getLogger(__name__)
 

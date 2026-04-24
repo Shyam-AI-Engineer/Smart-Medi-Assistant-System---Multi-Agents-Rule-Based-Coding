@@ -56,6 +56,7 @@ class ClinicalAgent:
             }
         """
         try:
+            print(f"DEBUG [CLINICAL_AGENT]: Processing question: {patient_question[:100]}")
             logger.info(f"Clinical agent processing: {patient_question[:100]}...")
 
             # Step 1: Embed the question
@@ -68,6 +69,9 @@ class ClinicalAgent:
                 top_k=5,
                 source_types=["text", "pdf"],  # Medical articles/guidelines
             )
+            print(f"DEBUG [CLINICAL_AGENT]: FAISS search returned {len(context_docs)} documents")
+            for doc in context_docs:
+                print(f"  - {doc['source_file']}: relevance {doc['score']:.1%}")
             logger.info(f"Retrieved {len(context_docs)} documents")
 
             # Format context for LLM
@@ -76,6 +80,12 @@ class ClinicalAgent:
                 patient_id=patient_info.get("patient_id") if patient_info else None,
                 top_k=5,
             )
+
+            # DEBUG: Log what context is being sent to LLM
+            logger.info(f"Formatted context for LLM: {len(formatted_context)} chars")
+            logger.info(f"Context starts with: {formatted_context[:300]}")
+            print(f"DEBUG: Formatted context length: {len(formatted_context)} chars")
+            print(f"DEBUG: First 300 chars: {formatted_context[:300]}")
 
             # Step 3: Generate medical response
             response_text = self.euri.generate_medical_response(
@@ -212,7 +222,7 @@ ALWAYS include disclaimer: This is for informational purposes only, not medical 
         This ingests guidelines, articles, clinical notes, etc.
 
         Args:
-            content: Document text content
+            content: Document text content (full content stored for RAG)
             source_type: "text", "pdf", "article"
             source_name: Filename or title
             metadata: Additional metadata (author, date, category)
@@ -236,12 +246,13 @@ ALWAYS include disclaimer: This is for informational purposes only, not medical 
                 source_name=source_name,
             )
 
-            # Add to FAISS knowledge base
+            # Add to FAISS knowledge base with full content
             doc_id = self.faiss.add_medical_document(
                 embedding=embedded["embedding"],
                 source_type=source_type,
                 source_file=source_name,
                 content_preview=embedded["content_preview"],
+                full_content=content,  # Pass full content for RAG context
                 metadata=metadata,
             )
 

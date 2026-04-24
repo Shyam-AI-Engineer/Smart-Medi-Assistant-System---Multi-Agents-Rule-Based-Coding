@@ -99,6 +99,7 @@ class FAISSService:
         content_preview: str,
         metadata: Optional[Dict[str, Any]] = None,
         chunk_index: int = 0,
+        full_content: Optional[str] = None,
     ) -> int:
         """
         Add medical document embedding to FAISS.
@@ -107,9 +108,10 @@ class FAISSService:
             embedding: 768-dimensional vector from Euri
             source_type: "text", "pdf", "image", "audio", "video"
             source_file: Original filename
-            content_preview: First 200 chars of content
+            content_preview: First 200 chars of content (for search results display)
             metadata: Additional metadata (patient_id, date, author, etc.)
             chunk_index: Position in document (for chunked documents)
+            full_content: Complete document content (for RAG context)
 
         Returns:
             Document ID in index
@@ -122,13 +124,14 @@ class FAISSService:
             self.index.add(vector)
             doc_id = self.next_id
 
-            # Store metadata
+            # Store metadata - include full content if provided, otherwise use preview
             self.metadata[doc_id] = {
                 "id": doc_id,
                 "source_type": source_type,
                 "source_file": source_file,
                 "chunk_index": chunk_index,
                 "content_preview": content_preview,
+                "full_content": full_content or content_preview,  # Store full content for RAG
                 "timestamp": datetime.utcnow().isoformat(),
             }
 
@@ -301,6 +304,8 @@ class FAISSService:
         """
         Retrieve and format medical context for RAG prompt.
 
+        Uses full_content (not just preview) to give LLM complete information.
+
         Args:
             query_embedding: Query vector
             patient_id: Optional filter
@@ -316,11 +321,12 @@ class FAISSService:
             )
 
             # Filter by patient if provided
+            # Include: (1) General knowledge documents (no patient_id), (2) Patient-specific docs
             if patient_id:
                 matches = [
                     m
                     for m in matches
-                    if m["metadata"].get("patient_id") == patient_id
+                    if not m["metadata"].get("patient_id") or m["metadata"].get("patient_id") == patient_id
                 ]
 
             if not matches:
@@ -333,9 +339,16 @@ class FAISSService:
                 context += f"Document {idx}: {match['source_file']}\n"
                 context += f"Source Type: {match['source_type']}\n"
                 context += f"Relevance: {match['score']:.1%}\n"
-                context += f"Content: {match['content_preview']}\n"
+                # Use full_content if available, fallback to preview
+                doc_content = match["metadata"].get("full_content", match["content_preview"])
+                context += f"Content: {doc_content}\n"
                 context += "-" * 40 + "\n\n"
 
+            # DEBUG: Log context length and first part
+            logger.info(f"RAG Context assembled: {len(context)} chars, first 500 chars: {context[:500]}")
+            logger.info(f"Full context keys in matches[0]: {list(matches[0]['metadata'].keys()) if matches else 'NO MATCHES'}")
+            print(f"DEBUG [FAISS]: Context assembled with {len(matches)} documents, {len(context)} chars total")
+            print(f"DEBUG [FAISS]: First document: {matches[0]['source_file'] if matches else 'NO MATCHES'}")
             return context
 
         except Exception as e:
