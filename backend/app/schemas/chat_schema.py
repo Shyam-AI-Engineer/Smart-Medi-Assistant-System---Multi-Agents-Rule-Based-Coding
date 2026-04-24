@@ -120,6 +120,71 @@ class ChatHistoryResponse(BaseModel):
     has_next: bool = Field(default=False, description="Whether more messages exist")
 
 
+class IngestDocumentRequest(BaseModel):
+    """Medical document to ingest into knowledge base."""
+    content: str = Field(
+        ...,
+        min_length=10,
+        description="Document text content (min 10 chars)"
+    )
+    source_type: str = Field(
+        ...,
+        pattern="^(text|pdf|article)$",
+        description="Document type: text, pdf, or article"
+    )
+    source_name: str = Field(
+        ...,
+        min_length=1,
+        max_length=255,
+        description="Filename or document title"
+    )
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "content": "Persistent headaches may be caused by tension, migraines, or dehydration. Treatment options include rest, hydration, pain management, and consulting a healthcare provider for severe cases.",
+                "source_type": "text",
+                "source_name": "headache_guide.txt"
+            }
+        }
+
+
+class IngestDocumentResponse(BaseModel):
+    """Response from document ingestion."""
+    success: bool = Field(..., description="Whether ingestion succeeded")
+    document_id: Optional[int] = Field(
+        default=None,
+        description="Assigned document ID in FAISS"
+    )
+    document_name: str = Field(..., description="Document name that was ingested")
+    chunks_added: int = Field(
+        default=1,
+        description="Number of vector chunks created"
+    )
+    tokens_processed: Optional[int] = Field(
+        default=None,
+        description="Tokens used for embedding"
+    )
+    message: str = Field(..., description="Status message")
+    error: Optional[str] = Field(
+        default=None,
+        description="Error message if ingestion failed"
+    )
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "success": True,
+                "document_id": 42,
+                "document_name": "headache_guide.txt",
+                "chunks_added": 1,
+                "tokens_processed": 89,
+                "message": "Added to medical knowledge base (ID: 42)",
+                "error": None
+            }
+        }
+
+
 class ErrorResponse(BaseModel):
     """Standard error response."""
     error: str = Field(..., description="Error message (user-friendly)")

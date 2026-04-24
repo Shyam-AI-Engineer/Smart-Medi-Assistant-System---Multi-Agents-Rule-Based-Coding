@@ -9,10 +9,13 @@ from app.schemas.chat_schema import (
     ChatHistoryQuery,
     ChatHistoryResponse,
     SourceReference,
+    IngestDocumentRequest,
+    IngestDocumentResponse,
 )
 from app.services.chat_service import ChatService
-from app.middleware.auth_middleware import get_current_user
+from app.middleware.auth_middleware import get_current_user, require_role
 from app.extensions import get_db
+from app.agents.clinical_agent import get_clinical_agent
 
 logger = logging.getLogger(__name__)
 
@@ -278,3 +281,75 @@ def health_check(db: Session = Depends(get_db)) -> dict:
                 "database": False,
             },
         }
+
+
+@router.post(
+    "/ingest",
+    response_model=IngestDocumentResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Ingest medical document",
+    description="Add medical document to knowledge base (admin only)"
+)
+def ingest_medical_document(
+    request: IngestDocumentRequest,
+    current_user: dict = Depends(require_role("admin")),
+) -> IngestDocumentResponse:
+    """
+    Ingest medical document into FAISS knowledge base.
+
+    Restricted to admin users. Embeds document and adds to vector database.
+
+    Args:
+        request: Document content, type, and name
+        current_user: Admin user (JWT validated)
+        db: Database session
+
+    Returns:
+        IngestDocumentResponse with document ID and ingestion status
+
+    Raises:
+        400: Invalid input (content too short, invalid source_type)
+        401: Not authenticated
+        403: User not admin
+    """
+    try:
+        logger.info(
+            f"Ingesting document: {request.source_name} "
+            f"(by user {current_user['user_id']})"
+        )
+
+        agent = get_clinical_agent()
+        result = agent.ingest_medical_document(
+            content=request.content,
+            source_type=request.source_type,
+            source_name=request.source_name,
+            metadata={"ingested_by": current_user["user_id"]},
+        )
+
+        logger.info(
+            f"Document ingested successfully: {request.source_name} "
+            f"(ID: {result.get('document_id')})"
+        )
+
+        return IngestDocumentResponse(
+            success=result.get("success", False),
+            document_id=result.get("document_id"),
+            document_name=result.get("document_name", request.source_name),
+            chunks_added=result.get("chunks_added", 1),
+            tokens_processed=result.get("tokens_processed"),
+            message=result.get("message", "Document ingested"),
+        )
+
+    except ValueError as e:
+        logger.warning(f"Validation error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+    except Exception as e:
+        logger.error(f"Document ingestion failed: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Failed to ingest document. Please check format and try again."
+        )
