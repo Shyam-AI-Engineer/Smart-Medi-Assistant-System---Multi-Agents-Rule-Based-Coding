@@ -216,7 +216,7 @@ class ChatService:
         Answers: Clinical, RAG, Medication, Triage, Monitoring, etc.
         """
         try:
-            routing = self.euri.generate_orchestrator_response(message)
+            routing = self.orchestrator.route_message(message)
             return routing
         except Exception as e:
             logger.error(f"Routing failed: {e}")
