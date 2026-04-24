@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.models import ChatHistory, Patient, User
 from app.services.euri_service import EuriService
 from app.services.faiss_service import FAISSService
+from app.agents.orchestrator import OrchestratorAgent
 from app.agents.clinical_agent import ClinicalAgent
 
 logger = logging.getLogger(__name__)
@@ -40,6 +41,7 @@ class ChatService:
         self.db = db
         self.euri = EuriService()
         self.faiss = FAISSService()
+        self.orchestrator = OrchestratorAgent()
         self.clinical_agent = ClinicalAgent()
 
     def handle_message(
@@ -95,8 +97,21 @@ class ChatService:
                 }
             )
 
-            # Step 2: Get routing intent
-            routing = self._get_routing_intent(message)
+            # Step 2a: Check for critical symptoms (escalate to triage)
+            if self.orchestrator.should_escalate_to_triage(message):
+                logger.warning(
+                    "chat.critical_symptom_detected",
+                    extra={"patient_id": patient.id, "message": message[:100]}
+                )
+                routing = {
+                    "routing_intent": "triage",
+                    "agent_to_call": "triage_agent",
+                    "confidence": 0.99,
+                    "reason": "Critical symptom detected",
+                }
+            else:
+                # Step 2b: Get routing intent
+                routing = self._get_routing_intent(message)
             logger.info(
                 "chat.message.routed",
                 extra={
