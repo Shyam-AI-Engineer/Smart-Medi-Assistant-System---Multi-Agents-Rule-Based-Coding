@@ -325,6 +325,195 @@ Respond with ONLY valid JSON:
                 "agent_to_call": "clinical_agent",
             }
 
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+    )
+    def generate_triage_assessment(
+        self,
+        patient_message: str,
+        patient_info: Optional[Dict[str, Any]] = None,
+        assessment_type: str = "general",
+    ) -> Dict[str, Any]:
+        """
+        Triage agent: assess urgency and recommend escalation path.
+
+        Analyzes patient symptoms/vitals and determines:
+        - Urgency level (critical, urgent, moderate, self-care)
+        - Severity score (1-10)
+        - Escalation path (ER, Urgent Care, Doctor, Self-Care)
+        - Warning signs
+        - Immediate actions
+
+        Args:
+            patient_message: Patient's message or symptom description
+            patient_info: Patient metadata (age, medical_history, medications)
+            assessment_type: "general" or "vitals"
+
+        Returns:
+            {
+                "urgency_level": "critical|urgent|moderate|self-care",
+                "severity_score": 8,
+                "escalation_path": "ER",
+                "immediate_action": "Call 911 or go to emergency room",
+                "warning_signs": ["Severe chest pain", "Difficulty breathing"],
+                "reasoning": "Patient reports chest pain with dyspnea",
+                "next_steps": ["Seek immediate attention", "Do not drive"],
+                "confidence_score": 0.95
+            }
+        """
+        triage_prompt = self._build_triage_system_prompt(assessment_type)
+
+        triage_message = self._build_triage_message(
+            patient_message,
+            patient_info,
+            assessment_type,
+        )
+
+        try:
+            response = self.client.chat.completions.create(
+                model=self.llm_model,
+                messages=[
+                    {"role": "system", "content": triage_prompt},
+                    {"role": "user", "content": triage_message},
+                ],
+                temperature=0.2,  # Very low temperature for objective severity assessment
+                max_tokens=512,
+            )
+
+            import json
+
+            result = json.loads(response.choices[0].message.content)
+
+            # Ensure all required fields
+            return {
+                "urgency_level": result.get("urgency_level", "moderate"),
+                "severity_score": int(result.get("severity_score", 5)),
+                "escalation_path": result.get("escalation_path", "Doctor Visit"),
+                "immediate_action": result.get("immediate_action", "Contact healthcare provider"),
+                "warning_signs": result.get("warning_signs", []),
+                "reasoning": result.get("reasoning", ""),
+                "next_steps": result.get("next_steps", []),
+                "confidence_score": float(result.get("confidence_score", 0.8)),
+            }
+
+        except (APIError, json.JSONDecodeError) as e:
+            logger.error(f"Triage assessment failed: {e}")
+            # Fallback: when in doubt, escalate
+            return {
+                "urgency_level": "urgent",
+                "severity_score": 7,
+                "escalation_path": "Urgent Care",
+                "immediate_action": "Please seek medical attention from a healthcare provider",
+                "warning_signs": [],
+                "reasoning": "Unable to complete assessment - recommend medical evaluation",
+                "next_steps": ["Contact healthcare provider"],
+                "confidence_score": 0.0,
+            }
+
+    def _build_triage_system_prompt(self, assessment_type: str = "general") -> str:
+        """Build system prompt for triage agent."""
+        if assessment_type == "vitals":
+            return """You are a medical triage agent specializing in vital sign assessment.
+
+CRITICAL RULES:
+1. Assess whether vital signs are normal or abnormal
+2. Score severity on 1-10 scale (10 = life-threatening)
+3. Determine escalation path based on severity
+4. Be CONSERVATIVE - when in doubt, escalate
+5. Consider patient age and medical history
+6. Identify specific warning signs
+
+Urgency levels:
+- critical (9-10): Immediate life threat, call 911
+- urgent (7-8): Needs evaluation within hours, go to ER/Urgent Care
+- moderate (4-6): Should see doctor today or within 24h
+- self-care (1-3): Manageable at home, monitor closely
+
+Respond with ONLY valid JSON:
+{
+    "urgency_level": "critical|urgent|moderate|self-care",
+    "severity_score": 1-10,
+    "escalation_path": "ER|Urgent Care|Doctor Visit|Self-Care",
+    "immediate_action": "...",
+    "warning_signs": ["..."],
+    "reasoning": "...",
+    "next_steps": ["..."],
+    "confidence_score": 0.0-1.0
+}"""
+        else:
+            return """You are a medical triage agent assessing patient urgency.
+
+CRITICAL RULES:
+1. Analyze symptoms for urgency indicators
+2. Look for red flags (chest pain, difficulty breathing, loss of consciousness, etc.)
+3. Score severity on 1-10 scale (10 = life-threatening)
+4. Determine appropriate escalation path
+5. Be CONSERVATIVE - when in doubt, escalate
+6. Consider patient age and medical history
+7. Identify specific warning signs that require emergency care
+
+Urgency levels:
+- critical (9-10): Seek immediate emergency care, call 911
+- urgent (7-8): Needs evaluation in ER or urgent care today
+- moderate (4-6): Should see doctor within 24 hours
+- self-care (1-3): Manageable with self-care, monitor symptoms
+
+Red flags that always escalate to ER:
+- Chest pain or pressure
+- Difficulty breathing or shortness of breath
+- Loss of consciousness or altered mental status
+- Severe bleeding
+- Severe allergic reaction
+- Signs of stroke (facial drooping, arm weakness, speech difficulty)
+- Severe abdominal pain
+- Poisoning or overdose
+
+Respond with ONLY valid JSON:
+{
+    "urgency_level": "critical|urgent|moderate|self-care",
+    "severity_score": 1-10,
+    "escalation_path": "ER|Urgent Care|Doctor Visit|Self-Care",
+    "immediate_action": "...",
+    "warning_signs": ["..."],
+    "reasoning": "...",
+    "next_steps": ["..."],
+    "confidence_score": 0.0-1.0
+}"""
+
+    def _build_triage_message(
+        self,
+        patient_message: str,
+        patient_info: Optional[Dict[str, Any]] = None,
+        assessment_type: str = "general",
+    ) -> str:
+        """Build user message for triage assessment."""
+        message = f"Patient presentation:\n{patient_message}"
+
+        if patient_info:
+            age = patient_info.get("age")
+            history = patient_info.get("history") or patient_info.get("medical_history")
+            meds = patient_info.get("medications") or patient_info.get("current_medications")
+            allergies = patient_info.get("allergies")
+
+            if age or history or meds or allergies:
+                message += "\n\nPatient context:"
+                if age:
+                    message += f"\n- Age: {age}"
+                if history:
+                    message += f"\n- Medical history: {history}"
+                if meds:
+                    message += f"\n- Current medications: {meds}"
+                if allergies:
+                    message += f"\n- Allergies: {allergies}"
+
+        if assessment_type == "vitals":
+            message += "\n\nAssess these vital signs for abnormalities."
+        else:
+            message += "\n\nAssess the urgency of this patient's condition."
+
+        return message
+
     def health_check(self) -> bool:
         """Test Euri API connectivity."""
         try:
