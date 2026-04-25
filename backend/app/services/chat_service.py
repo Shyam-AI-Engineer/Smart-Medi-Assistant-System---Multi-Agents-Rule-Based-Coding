@@ -11,6 +11,7 @@ from app.agents.orchestrator import OrchestratorAgent
 from app.agents.clinical_agent import ClinicalAgent
 from app.agents.triage_agent import TriageAgent
 from app.agents.medication_agent import MedicationAgent
+from app.agents.monitoring_agent import MonitoringAgent
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +48,7 @@ class ChatService:
         self.clinical_agent = ClinicalAgent()
         self.triage_agent = TriageAgent()
         self.medication_agent = MedicationAgent()
+        self.monitoring_agent = MonitoringAgent()
 
     def handle_message(
         self,
@@ -262,13 +264,6 @@ class ChatService:
                     patient_info=patient_info,
                 )
 
-            elif agent_name == "medication_agent":
-                # TODO: Implement medication agent
-                return self.clinical_agent.answer_medical_question(
-                    message,
-                    patient_info=patient_info,
-                )
-
             elif agent_name == "triage_agent":
                 return self.triage_agent.assess_urgency(
                     message,
@@ -293,6 +288,20 @@ class ChatService:
                     return self.medication_agent.check_single_medication(
                         "medication",
                         patient_info=patient_info,
+                    )
+
+            elif agent_name == "monitoring_agent":
+                vitals = self._extract_vitals_from_message(message)
+                if vitals:
+                    return self.monitoring_agent.analyze_vitals(
+                        vitals,
+                        patient_info=patient_info,
+                    )
+                else:
+                    logger.warning(f"No vitals found in message: {message}")
+                    return self._error_response(
+                        "Please provide vital sign values (e.g., heart rate: 120 bpm)",
+                        agent="monitoring_agent",
                     )
 
             else:
@@ -369,6 +378,80 @@ class ChatService:
             if med in msg_lower:
                 found.append(med)
         return found
+
+    def _extract_vitals_from_message(self, message: str) -> Dict[str, float]:
+        """Extract vital sign values from user message.
+
+        Looks for patterns like:
+        - "heart rate 120" → heart_rate: 120
+        - "bp 140/90" → blood_pressure_systolic: 140, blood_pressure_diastolic: 90
+        - "temperature 38.5" → temperature: 38.5
+        - "oxygen 96" → oxygen_saturation: 96
+        """
+        import re
+
+        vitals = {}
+        msg_lower = message.lower()
+
+        # Heart rate patterns
+        hr_patterns = [
+            r"heart\s+rate[:\s]+(\d+)",
+            r"pulse[:\s]+(\d+)",
+            r"hr[:\s]+(\d+)",
+        ]
+        for pattern in hr_patterns:
+            match = re.search(pattern, msg_lower)
+            if match:
+                vitals["heart_rate"] = float(match.group(1))
+                break
+
+        # Blood pressure patterns (systolic/diastolic)
+        bp_patterns = [
+            r"(?:blood\s+)?pressure[:\s]+(\d+)\s*[/\\]\s*(\d+)",
+            r"bp[:\s]+(\d+)\s*[/\\]\s*(\d+)",
+        ]
+        for pattern in bp_patterns:
+            match = re.search(pattern, msg_lower)
+            if match:
+                vitals["blood_pressure_systolic"] = float(match.group(1))
+                vitals["blood_pressure_diastolic"] = float(match.group(2))
+                break
+
+        # Temperature patterns
+        temp_patterns = [
+            r"temperature[:\s]+(\d+\.?\d*)",
+            r"temp[:\s]+(\d+\.?\d*)",
+            r"fever[:\s]+(\d+\.?\d*)",
+        ]
+        for pattern in temp_patterns:
+            match = re.search(pattern, msg_lower)
+            if match:
+                vitals["temperature"] = float(match.group(1))
+                break
+
+        # Oxygen saturation patterns
+        o2_patterns = [
+            r"(?:oxygen|spo2)[:\s]+(\d+)",
+            r"o2[:\s]+(\d+)",
+        ]
+        for pattern in o2_patterns:
+            match = re.search(pattern, msg_lower)
+            if match:
+                vitals["oxygen_saturation"] = float(match.group(1))
+                break
+
+        # Respiratory rate patterns
+        rr_patterns = [
+            r"respiratory\s+rate[:\s]+(\d+)",
+            r"breathing\s+rate[:\s]+(\d+)",
+        ]
+        for pattern in rr_patterns:
+            match = re.search(pattern, msg_lower)
+            if match:
+                vitals["respiratory_rate"] = float(match.group(1))
+                break
+
+        return vitals
 
     # Utility methods for future agents
 

@@ -33,9 +33,11 @@ class OrchestratorAgent:
         Analyze patient message and route to specialist agent.
 
         Flow:
-        1. Call Euri LLM to analyze intent
-        2. Extract routing decision (agent_to_call, confidence, reason)
-        3. Return routing result
+        1. Check for vital sign keywords (monitoring agent)
+        2. Check for critical symptoms (triage agent)
+        3. Call Euri LLM to analyze intent for other queries
+        4. Extract routing decision (agent_to_call, confidence, reason)
+        5. Return routing result
 
         Args:
             patient_message: Patient's question or statement
@@ -43,18 +45,50 @@ class OrchestratorAgent:
 
         Returns:
             {
-                "routing_intent": "clinical|medication|triage|rag",
+                "routing_intent": "clinical|medication|triage|rag|monitoring",
                 "confidence": 0.95,
                 "reason": "User asked about symptom interactions",
-                "agent_to_call": "medication_agent",
+                "agent_to_call": "medication_agent|monitoring_agent",
                 "suggested_context": "Patient with high blood pressure"
             }
         """
         try:
+            message_lower = patient_message.lower()
+
+            # Step 1: Check for vital sign keywords (fast path)
+            vital_keywords = [
+                "heart rate", "pulse", "bp", "blood pressure",
+                "oxygen", "spo2", "temperature", "fever", "temp",
+                "respiratory rate", "breathing", "vitals"
+            ]
+            if any(keyword in message_lower for keyword in vital_keywords):
+                logger.info("Vital sign query detected - routing to monitoring_agent")
+                return {
+                    "routing_intent": "monitoring",
+                    "confidence": 0.98,
+                    "reason": "User asked about vital signs",
+                    "agent_to_call": "monitoring_agent",
+                }
+
+            # Step 2: Check for medication keywords
+            medication_keywords = [
+                "medication", "drug", "pill", "tablet", "medicine",
+                "interaction", "contraindication", "side effect",
+                "can i take", "is it safe to take"
+            ]
+            if any(keyword in message_lower for keyword in medication_keywords):
+                logger.info("Medication query detected - routing to medication_agent")
+                return {
+                    "routing_intent": "medication",
+                    "confidence": 0.98,
+                    "reason": "User asked about medications or drugs",
+                    "agent_to_call": "medication_agent",
+                }
+
             print(f"DEBUG [ORCHESTRATOR]: Analyzing message: {patient_message[:100]}")
             logger.info(f"Orchestrator routing message: {patient_message[:100]}...")
 
-            # Call Euri to determine routing
+            # Step 3: Call Euri to determine routing for general queries
             routing_result = self.euri.generate_orchestrator_response(
                 user_message=patient_message,
                 chat_history=chat_history,
