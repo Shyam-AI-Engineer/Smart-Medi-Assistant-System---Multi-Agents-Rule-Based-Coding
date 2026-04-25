@@ -2,13 +2,14 @@
 from .orchestrator import OrchestratorAgent
 from .clinical_agent import ClinicalAgent
 from .triage_agent import TriageAgent
+from .medication_agent import MedicationAgent
 
 __all__ = [
     "OrchestratorAgent",
     "ClinicalAgent",
     "TriageAgent",
+    "MedicationAgent",
     # Future agents:
     # "RAGAgent",
-    # "MedicationAgent",
     # "MonitoringAgent",
 ]

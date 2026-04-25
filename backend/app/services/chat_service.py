@@ -1,6 +1,6 @@
 """Chat service - orchestrates AI agents, FAISS, and persistence."""
 import logging
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from datetime import datetime
 from sqlalchemy.orm import Session
 
@@ -10,6 +10,7 @@ from app.services.faiss_service import FAISSService
 from app.agents.orchestrator import OrchestratorAgent
 from app.agents.clinical_agent import ClinicalAgent
 from app.agents.triage_agent import TriageAgent
+from app.agents.medication_agent import MedicationAgent
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +46,7 @@ class ChatService:
         self.orchestrator = OrchestratorAgent()
         self.clinical_agent = ClinicalAgent()
         self.triage_agent = TriageAgent()
+        self.medication_agent = MedicationAgent()
 
     def handle_message(
         self,
@@ -273,6 +275,26 @@ class ChatService:
                     patient_info=patient_info,
                 )
 
+            elif agent_name == "medication_agent":
+                medications = self._extract_medications(message)
+                if len(medications) > 1:
+                    return self.medication_agent.check_medication_interactions(
+                        medications,
+                        patient_info=patient_info,
+                    )
+                elif medications:
+                    return self.medication_agent.check_single_medication(
+                        medications[0],
+                        patient_info=patient_info,
+                    )
+                else:
+                    # No medications found, use LLM to extract
+                    logger.warning(f"No medications extracted from: {message}")
+                    return self.medication_agent.check_single_medication(
+                        "medication",
+                        patient_info=patient_info,
+                    )
+
             else:
                 # Unknown agent, use clinical as fallback
                 logger.warning(f"Unknown agent: {agent_name}, using clinical")
@@ -332,6 +354,21 @@ class ChatService:
             "context_documents_used": 0,
             "error": True,
         }
+
+    def _extract_medications(self, message: str) -> List[str]:
+        """Extract medication names from user message."""
+        known_meds = [
+            "ibuprofen", "aspirin", "paracetamol", "acetaminophen",
+            "metformin", "lisinopril", "warfarin", "metoprolol",
+            "amlodipine", "clopidogrel", "diltiazem", "verapamil",
+            "alcohol", "contrast dye", "potassium",
+        ]
+        found = []
+        msg_lower = message.lower()
+        for med in known_meds:
+            if med in msg_lower:
+                found.append(med)
+        return found
 
     # Utility methods for future agents
 
