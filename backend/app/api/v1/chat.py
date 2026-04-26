@@ -22,6 +22,35 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/chat", tags=["chat"])
 
 
+def safe_text(text: str) -> str:
+    """Sanitize text: UTF-8 round-trip encode/decode with problem char replacements."""
+    if not isinstance(text, str):
+        text = str(text)
+
+    # UTF-8 round-trip to catch encoding issues
+    return (
+        text.encode("utf-8", "ignore").decode("utf-8")
+        .replace("≥", ">=")
+        .replace("≤", "<=")
+        .replace("°", " degrees")
+        .replace("→", "->")
+        .replace("•", "-")
+        .replace("✓", "OK")
+        .replace("✗", "X")
+        .replace("⚠", "WARNING")
+        .replace("×", "x")
+        .replace("÷", "/")
+        .replace("±", "+/-")
+        .replace("∞", "infinity")
+        .replace("√", "sqrt")
+        .replace("≈", "~")
+        .replace("≠", "!=")
+        .replace("©", "(c)")
+        .replace("®", "(R)")
+        .replace("™", "(TM)")
+    )
+
+
 @router.post(
     "",
     response_model=ChatResponse,
@@ -65,22 +94,42 @@ def send_message(
                 detail="Message cannot be empty"
             )
 
-        # Initialize service and handle message
+        # Initialize service and handle message with safety wrapper
         service = ChatService(db)
-        agent_response = service.handle_message(
-            message=request.message.strip(),
-            user_id=current_user["user_id"],
-        )
+        try:
+            agent_response = service.handle_message(
+                message=request.message.strip(),
+                user_id=current_user["user_id"],
+            )
+        except Exception as e:
+            # Catch any service errors and return as ChatResponse
+            logger.error("Service error: %s", type(e).__name__)
+            return ChatResponse(
+                response="Internal processing error. Please try again.",
+                sources=[],
+                agent_used="error",
+                confidence_score=0.0,
+                tokens_used=0,
+                context_documents_used=0,
+                error=True,
+            )
+
+        # CRITICAL: Sanitize agent response IMMEDIATELY before any processing
+        raw_text = agent_response.get('response', 'Service error')
+        response_text = safe_text(raw_text)[:500]
 
         # Check for errors from service
         if agent_response.get("error"):
-            logger.warning(
-                f"Service error for user {current_user['user_id']}: "
-                f"{agent_response.get('response')}"
-            )
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail=agent_response.get("response", "Service error")
+            response_text = safe_text(agent_response.get("response", ""))
+
+            return ChatResponse(
+                response=response_text,
+                sources=[],
+                agent_used="clarification",
+                confidence_score=0.2,
+                tokens_used=0,
+                context_documents_used=0,
+                error=False,
             )
 
         # Transform agent response to API response
@@ -95,7 +144,7 @@ def send_message(
         ]
 
         return ChatResponse(
-            response=agent_response.get("response", ""),
+            response=response_text,
             sources=sources,
             agent_used=agent_response.get("agent_used", "orchestrator"),
             confidence_score=agent_response.get("confidence_score", 0.5),
@@ -105,21 +154,22 @@ def send_message(
         )
 
     except HTTPException:
-        # Re-raise HTTP exceptions as-is
+        # Re-raise HTTP exceptions (validation errors, auth failures)
         raise
 
-    except ValueError as e:
-        logger.warning(f"Validation error: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
-        )
-
     except Exception as e:
-        logger.error(f"Unexpected error in chat endpoint: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error. Please try again later."
+        # Catch-all: return error ChatResponse instead of raising
+        error_type = type(e).__name__
+        logger.error("Unexpected error in chat: %s", error_type)
+
+        return ChatResponse(
+            response="An error occurred processing your message. Please try again.",
+            sources=[],
+            agent_used="error",
+            confidence_score=0.0,
+            tokens_used=0,
+            context_documents_used=0,
+            error=True,
         )
 
 

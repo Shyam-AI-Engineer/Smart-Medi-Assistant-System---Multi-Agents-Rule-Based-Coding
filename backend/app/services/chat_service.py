@@ -50,6 +50,42 @@ class ChatService:
         self.medication_agent = MedicationAgent()
         self.monitoring_agent = MonitoringAgent()
 
+    def _sanitize_response(self, text: str) -> str:
+        """Convert Unicode to ASCII-safe equivalents. Handles Windows cp1252 limitation."""
+        if not text:
+            return text
+        replacements = {
+            '≥': '>=',
+            '≤': '<=',
+            '°': ' degrees',
+            '→': '->',
+            '•': '-',
+            '♥': '*',
+            '✓': 'OK',
+            '✗': 'X',
+            '⚠': 'WARNING',
+            '×': 'x',
+            '÷': '/',
+            '±': '+/-',
+            '∞': 'infinity',
+            '√': 'sqrt',
+            '≈': '~',
+            '≠': '!=',
+            '©': '(c)',
+            '®': '(R)',
+            '™': '(TM)',
+        }
+        result = str(text)
+        for unicode_char, ascii_replacement in replacements.items():
+            result = result.replace(unicode_char, ascii_replacement)
+        return result
+
+    def _sanitize_agent_response(self, response: Dict[str, Any]) -> Dict[str, Any]:
+        """Sanitize agent response for Windows encoding compatibility."""
+        if "response" in response and isinstance(response["response"], str):
+            response["response"] = self._sanitize_response(response["response"])
+        return response
+
     def handle_message(
         self,
         message: str,
@@ -133,6 +169,10 @@ class ChatService:
                 patient_info,
             )
 
+            # CRITICAL: Sanitize response IMMEDIATELY before any logging/processing
+            if "response" in agent_response and agent_response["response"]:
+                agent_response["response"] = self._sanitize_response(str(agent_response["response"]))
+
             if agent_response.get("error"):
                 logger.warning(
                     "chat.agent_error",
@@ -160,12 +200,18 @@ class ChatService:
 
             return agent_response
 
-        except Exception as e:
-            logger.error(
-                f"Chat handler error: {e}",
-                exc_info=True,
-                extra={"user_id": user_id}
+        except UnicodeEncodeError as e:
+            logger.error(f"Unicode encoding error in chat", exc_info=False, extra={"user_id": user_id})
+            return self._error_response(
+                "Character encoding error in response. Please try again.",
+                agent="error_handler"
             )
+        except Exception as e:
+            try:
+                error_str = str(e)[:100]
+            except:
+                error_str = "Unknown error"
+            logger.error(f"Chat handler error: {error_str}", extra={"user_id": user_id})
             return self._error_response(
                 "Failed to process message",
                 agent="error_handler"
@@ -203,6 +249,16 @@ class ChatService:
                     )
                 )
 
+            # Fetch recent vitals from database
+            from app.models import Vitals
+            recent_vitals = None
+            try:
+                recent_vitals = self.db.query(Vitals).filter_by(
+                    patient_id=patient.id
+                ).order_by(Vitals.created_at.desc()).first()
+            except Exception as e:
+                logger.warning(f"Failed to fetch recent vitals: {e}")
+
             return {
                 "patient_id": patient.id,
                 "age": age,
@@ -210,6 +266,16 @@ class ChatService:
                 "medications": (patient.current_medications or "").split(","),
                 "medical_history": patient.medical_history or "",
                 "emergency_contact": patient.emergency_contact,
+                "recent_vitals": {
+                    "heart_rate": recent_vitals.heart_rate if recent_vitals else None,
+                    "blood_pressure_systolic": recent_vitals.blood_pressure_systolic if recent_vitals else None,
+                    "blood_pressure_diastolic": recent_vitals.blood_pressure_diastolic if recent_vitals else None,
+                    "temperature": recent_vitals.temperature if recent_vitals else None,
+                    "oxygen_saturation": recent_vitals.oxygen_saturation if recent_vitals else None,
+                    "respiratory_rate": recent_vitals.respiratory_rate if recent_vitals else None,
+                    "weight": recent_vitals.weight if recent_vitals else None,
+                    "timestamp": recent_vitals.created_at.isoformat() if recent_vitals else None,
+                } if recent_vitals else None,
             }
         except Exception as e:
             logger.warning(f"Failed to extract patient info: {e}")
@@ -252,10 +318,10 @@ class ChatService:
         """
         try:
             if agent_name == "clinical_agent":
-                return self.clinical_agent.answer_medical_question(
+                return self._sanitize_agent_response(self.clinical_agent.answer_medical_question(
                     message,
                     patient_info=patient_info,
-                )
+                ))
 
             elif agent_name == "rag_agent":
                 # TODO: Implement RAG agent
@@ -291,16 +357,29 @@ class ChatService:
                     )
 
             elif agent_name == "monitoring_agent":
+                # Try to extract vitals from message first
                 vitals = self._extract_vitals_from_message(message)
+
+                # If no vitals in message, check if we have recent vitals from database
+                if not vitals and patient_info and patient_info.get("recent_vitals"):
+                    recent_vitals = patient_info["recent_vitals"]
+                    # Convert database vitals dict to the format monitoring_agent expects
+                    vitals = {
+                        k: v for k, v in recent_vitals.items()
+                        if k != "timestamp" and v is not None
+                    }
+                    logger.info(f"Using recent vitals from database for analysis")
+
+                # If we have vitals (either from message or database), analyze them
                 if vitals:
                     return self.monitoring_agent.analyze_vitals(
                         vitals,
                         patient_info=patient_info,
                     )
                 else:
-                    logger.warning(f"No vitals found in message: {message}")
+                    logger.warning(f"No vitals found in message or database: {message}")
                     return self._error_response(
-                        "Please provide vital sign values (e.g., heart rate: 120 bpm)",
+                        "No vital measurements found. Please record your vitals on the Vitals page first, or provide values in your message (e.g., 'heart rate 85 bpm, oxygen 98%')",
                         agent="monitoring_agent",
                     )
 
@@ -313,11 +392,20 @@ class ChatService:
                 )
 
         except Exception as e:
-            logger.error(f"Agent call failed ({agent_name}): {e}")
+            logger.error(f"Agent call failed ({agent_name}): {str(e)[:200]}")
             return self._error_response(
                 "Agent processing failed",
                 agent=agent_name,
             )
+
+    def _wrap_agent_response(self, response: Dict[str, Any]) -> Dict[str, Any]:
+        """Sanitize agent response for Windows encoding."""
+        if isinstance(response, dict) and "response" in response:
+            try:
+                response["response"] = self._sanitize_response(str(response["response"]))
+            except Exception:
+                pass
+        return response
 
     def _save_chat_history(
         self,
@@ -351,11 +439,12 @@ class ChatService:
         agent: str = "error_handler",
     ) -> Dict[str, Any]:
         """Return user-friendly error response."""
+        response_text = (
+            f"{message}. Our team has been notified. "
+            "Please try again later."
+        )
         return {
-            "response": (
-                f"{message}. Our team has been notified. "
-                "Please try again later."
-            ),
+            "response": self._sanitize_response(response_text),
             "sources": [],
             "agent_used": agent,
             "confidence_score": 0.0,

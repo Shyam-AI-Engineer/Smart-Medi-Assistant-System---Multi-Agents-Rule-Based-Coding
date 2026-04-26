@@ -10,17 +10,19 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import logging
 import sys
+import io
 
 from app.extensions import init_db
 from app.api.v1 import api_router
 
+# Fix Windows encoding issue: configure logging with UTF-8
+handler = logging.StreamHandler(io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace'))
+handler.setFormatter(logging.Formatter("%(asctime)s [%(name)s] %(levelname)s: %(message)s"))
+
 # Configure logging for the application
 logging.basicConfig(
     level=logging.DEBUG,
-    format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
-    handlers=[
-        logging.StreamHandler(sys.stdout),
-    ],
+    handlers=[handler],
 )
 
 logger = logging.getLogger(__name__)
