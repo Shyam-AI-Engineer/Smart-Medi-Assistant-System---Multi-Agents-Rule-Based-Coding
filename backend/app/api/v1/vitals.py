@@ -195,6 +195,17 @@ def store_vitals(
         500: Internal server error
     """
     try:
+        # Auto-derive patient_id from JWT if not provided
+        if not request.patient_id:
+            from app.models import Patient
+            patient = db.query(Patient).filter_by(user_id=current_user["user_id"]).first()
+            if not patient:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Patient profile not found"
+                )
+            request.patient_id = patient.id
+
         service = VitalsService(db)
         result = service.store_and_analyze(request, current_user)
 
