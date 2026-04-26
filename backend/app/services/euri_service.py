@@ -222,6 +222,19 @@ PATIENT CONTEXT:
 - Medical history: {patient_info.get('history', 'Not provided')}
 """
 
+            # Add recent vitals if available
+            if patient_info.get('recent_vitals'):
+                vitals = patient_info['recent_vitals']
+                base_prompt += f"""
+RECENT VITAL SIGNS (from {vitals.get('timestamp', 'recent measurement')}):
+- Heart Rate: {vitals.get('heart_rate', 'Not recorded')} bpm
+- Blood Pressure: {vitals.get('blood_pressure_systolic', '?')}/{vitals.get('blood_pressure_diastolic', '?')} mmHg
+- Oxygen Saturation: {vitals.get('oxygen_saturation', 'Not recorded')}%
+- Temperature: {vitals.get('temperature', 'Not recorded')}°C
+- Respiratory Rate: {vitals.get('respiratory_rate', 'Not recorded')} /min
+- Weight: {vitals.get('weight', 'Not recorded')} kg
+"""
+
         return base_prompt
 
     def _build_rag_message(
