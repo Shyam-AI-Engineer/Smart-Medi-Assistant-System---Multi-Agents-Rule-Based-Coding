@@ -124,13 +124,14 @@ class ClinicalAgent:
             }
 
         except Exception as e:
-            logger.error(f"Clinical agent failed: {e}")
+            error_msg = str(e).encode('utf-8', 'ignore').decode('utf-8')[:100]
+            logger.error(f"Clinical agent failed: {error_msg}")
             return {
-                "response": f"Medical Assistant Error: {str(e)}. Please try again.",
+                "response": "Unable to generate medical response. Please try again.",
                 "sources": [],
                 "confidence_score": 0.0,
                 "agent_used": self.agent_name,
-                "error": str(e),
+                "error": True,
             }
 
     def analyze_symptoms(
