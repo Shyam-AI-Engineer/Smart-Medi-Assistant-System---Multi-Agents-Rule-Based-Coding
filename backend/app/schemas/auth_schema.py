@@ -8,6 +8,7 @@ class RegisterRequest(BaseModel):
     email: EmailStr
     password: str = Field(..., min_length=8, max_length=100)
     full_name: str = Field(..., min_length=2, max_length=255)
+    role: Optional[str] = Field(default="patient", description="user role: patient, doctor (defaults to patient)")
 
     model_config = {
         "json_schema_extra": {
@@ -15,6 +16,7 @@ class RegisterRequest(BaseModel):
                 "email": "patient@example.com",
                 "password": "SecurePass123",
                 "full_name": "John Doe",
+                "role": "patient",
             }
         }
     }
