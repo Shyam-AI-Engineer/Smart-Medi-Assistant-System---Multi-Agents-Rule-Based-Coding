@@ -13,7 +13,7 @@ class TrendEnum(str, Enum):
 
 class VitalsStoreRequest(BaseModel):
     """Request to store vitals and receive immediate analysis + trend."""
-    patient_id: Optional[str] = Field(None, description="Patient UUID (auto-derived from JWT if not provided)")
+    patient_id: Optional[str] = None
     heart_rate: Optional[float] = Field(None, ge=20, le=300, description="Heart rate in bpm")
     blood_pressure_systolic: Optional[float] = Field(None, ge=50, le=300, description="Systolic BP in mmHg")
     blood_pressure_diastolic: Optional[float] = Field(None, ge=30, le=200, description="Diastolic BP in mmHg")
