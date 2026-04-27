@@ -11,6 +11,7 @@ const nav = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/vitals", label: "Vitals", icon: HeartPulse },
   { href: "/chat", label: "AI Chat", icon: MessagesSquare },
+  { href: "/profile", label: "Profile", icon: Settings },
 ];
 
 export function Sidebar() {

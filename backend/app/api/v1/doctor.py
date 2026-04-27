@@ -47,7 +47,7 @@ class PatientDetailResponse(PatientProfileResponse):
 def list_all_patients(
     limit: int = Query(default=20, ge=1, le=100, description="Max records to return"),
     offset: int = Query(default=0, ge=0, description="Number of records to skip"),
-    current_user: dict = Depends(require_role("doctor")),
+    current_user: dict = Depends(require_role("doctor", "admin")),
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
     """
@@ -186,7 +186,7 @@ def get_patient_detail(
     chat_limit: int = Query(
         default=20, ge=1, le=100, description="Max chat history records"
     ),
-    current_user: dict = Depends(require_role("doctor")),
+    current_user: dict = Depends(require_role("doctor", "admin")),
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
     """

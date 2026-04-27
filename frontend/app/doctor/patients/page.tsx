@@ -101,14 +101,16 @@ export default function DoctorPatientsPage() {
                   </div>
                   <div className="flex items-center gap-3">
                     <Badge
-                      variant={
+                      tone={
                         patient.latest_vital_status === "CRITICAL"
                           ? "danger"
                           : patient.latest_vital_status === "HIGH"
                             ? "warning"
                             : patient.latest_vital_status === "MODERATE"
-                              ? "info"
-                              : "success"
+                              ? "brand"
+                              : patient.latest_vital_status === "NORMAL"
+                                ? "success"
+                                : "neutral"
                       }
                     >
                       {patient.latest_vital_status}

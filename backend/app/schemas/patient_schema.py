@@ -7,6 +7,7 @@ from typing import Optional, List
 class PatientProfileResponse(BaseModel):
     id: str
     user_id: str
+    full_name: Optional[str] = None
     date_of_birth: Optional[date] = None
     medical_history: Optional[str] = None
     allergies: Optional[str] = None
@@ -19,6 +20,7 @@ class PatientProfileResponse(BaseModel):
 
 
 class PatientProfileUpdate(BaseModel):
+    full_name: Optional[str] = Field(None, min_length=1, max_length=255)
     date_of_birth: Optional[date] = None
     medical_history: Optional[str] = Field(None, max_length=5000)
     allergies: Optional[str] = Field(None, max_length=2000)
@@ -28,6 +30,7 @@ class PatientProfileUpdate(BaseModel):
     model_config = {
         "json_schema_extra": {
             "example": {
+                "full_name": "John Doe",
                 "date_of_birth": "1990-05-15",
                 "allergies": "Penicillin, Aspirin",
                 "current_medications": "Metformin 500mg daily",

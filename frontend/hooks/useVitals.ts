@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { endpoints, type VitalRecord, type VitalsAnalysis } from "@/lib/api";
+import { endpoints, type VitalRecord, type VitalsAnalysis, type PatientProfile } from "@/lib/api";
 
 export function useVitalsHistory(patientId: string | undefined, limit = 30) {
   return useQuery({
@@ -35,5 +35,16 @@ export function useMyPatientProfile() {
     queryKey: ["patient-profile", "me"],
     queryFn: () => endpoints.myProfile(),
     retry: 0,
+  });
+}
+
+export function useUpdateProfile() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: Partial<PatientProfile>) =>
+      endpoints.updateProfile(payload),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["patient-profile", "me"] });
+    },
   });
 }

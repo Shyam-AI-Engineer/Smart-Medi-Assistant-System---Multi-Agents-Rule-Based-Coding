@@ -3,7 +3,7 @@ import logging
 from typing import Dict, Any
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
-from app.models import Patient, Vitals
+from app.models import Patient, User, Vitals
 from app.schemas.patient_schema import PatientProfileUpdate, VitalsCreate
 
 logger = logging.getLogger(__name__)
@@ -28,6 +28,15 @@ class PatientService:
         """Partially update the patient profile. Only supplied fields are changed."""
         patient = self.get_by_user_id(user_id)
         changes = update.model_dump(exclude_unset=True)
+
+        # Handle full_name separately (it's on User, not Patient)
+        full_name = changes.pop("full_name", None)
+        if full_name is not None:
+            user = self.db.query(User).get(user_id)
+            if user:
+                user.full_name = full_name
+
+        # Update all other fields on Patient
         for field, value in changes.items():
             setattr(patient, field, value)
         self.db.commit()

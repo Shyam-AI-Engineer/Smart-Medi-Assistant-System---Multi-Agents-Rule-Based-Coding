@@ -2,16 +2,31 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ArrowLeft, Calendar, AlertCircle } from "lucide-react";
+import { useMemo } from "react";
+import { ArrowLeft, Calendar } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Loader } from "@/components/ui/Loader";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { VitalsChart, type ChartPoint } from "@/components/dashboard/VitalsChart";
 import { usePatientDetail } from "@/hooks/useDoctor";
 import { formatDateTime } from "@/lib/format";
 import type { VitalRecord } from "@/lib/api";
+
+type Metric = "heart_rate" | "blood_pressure_systolic" | "oxygen_saturation" | "temperature";
+
+function buildSeries(records: VitalRecord[], metric: Metric): ChartPoint[] {
+  return [...records]
+    .reverse()
+    .map((r) => ({
+      time: new Date(r.created_at).toLocaleDateString(undefined, {
+        month: "short",
+        day: "numeric",
+      }),
+      value: (r[metric] ?? null) as number | null,
+    }));
+}
 
 function buildVitalsDisplay(vital: VitalRecord) {
   const items = [];
@@ -70,6 +85,16 @@ export default function PatientDetailPage() {
   const summary = data.summary ?? {};
   const latestVital = vitals[0];
 
+  const series = useMemo(
+    () => ({
+      hr: buildSeries(vitals, "heart_rate"),
+      bp: buildSeries(vitals, "blood_pressure_systolic"),
+      spo2: buildSeries(vitals, "oxygen_saturation"),
+      temp: buildSeries(vitals, "temperature"),
+    }),
+    [vitals],
+  );
+
   return (
     <div className="container py-8 max-w-5xl">
       <Link href="/doctor/patients" className="inline-flex items-center gap-2 mb-6">
@@ -95,14 +120,16 @@ export default function PatientDetailPage() {
           </CardHeader>
           <CardContent>
             <Badge
-              variant={
+              tone={
                 summary.latest_status === "CRITICAL"
                   ? "danger"
                   : summary.latest_status === "HIGH"
                     ? "warning"
                     : summary.latest_status === "MODERATE"
-                      ? "info"
-                      : "success"
+                      ? "brand"
+                      : summary.latest_status === "NORMAL"
+                        ? "success"
+                        : "neutral"
               }
             >
               {summary.latest_status || "UNKNOWN"}
@@ -118,14 +145,16 @@ export default function PatientDetailPage() {
           </CardHeader>
           <CardContent>
             <Badge
-              variant={
+              tone={
                 summary.risk_level === "CRITICAL"
                   ? "danger"
                   : summary.risk_level === "HIGH"
                     ? "warning"
                     : summary.risk_level === "MODERATE"
-                      ? "info"
-                      : "success"
+                      ? "brand"
+                      : summary.risk_level === "LOW"
+                        ? "success"
+                        : "neutral"
               }
             >
               {summary.risk_level || "UNKNOWN"}
@@ -240,6 +269,47 @@ export default function PatientDetailPage() {
         )}
       </div>
 
+      {/* Vitals Trend Charts */}
+      {vitals.length > 1 && (
+        <div className="mt-6">
+          <h2 className="text-base font-semibold text-ink mb-4">Vitals Trends</h2>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <VitalsChart
+              title="Heart Rate"
+              description="Beats per minute"
+              data={series.hr}
+              unit="bpm"
+              color="#EF4444"
+              normalRange={{ min: 60, max: 100 }}
+            />
+            <VitalsChart
+              title="Blood Pressure (Systolic)"
+              description="Top number, mmHg"
+              data={series.bp}
+              unit="mmHg"
+              color="#1E86EE"
+              normalRange={{ min: 90, max: 120 }}
+            />
+            <VitalsChart
+              title="Oxygen Saturation"
+              description="SpO₂ %"
+              data={series.spo2}
+              unit="%"
+              color="#10B981"
+              normalRange={{ min: 95, max: 100 }}
+            />
+            <VitalsChart
+              title="Temperature"
+              description="Body temperature, °C"
+              data={series.temp}
+              unit="°C"
+              color="#F59E0B"
+              normalRange={{ min: 36.1, max: 37.2 }}
+            />
+          </div>
+        </div>
+      )}
+
       {/* Vitals History */}
       {vitals.length > 0 && (
         <Card className="mt-6">
@@ -282,7 +352,7 @@ export default function PatientDetailPage() {
                     <p className="text-xs text-ink-subtle">
                       {formatDateTime(chat.created_at)} • Agent: {chat.agent_used}
                     </p>
-                    <Badge variant="info" className="text-xs">
+                    <Badge tone="brand" className="text-xs">
                       {(chat.confidence_score * 100).toFixed(0)}% confidence
                     </Badge>
                   </div>
