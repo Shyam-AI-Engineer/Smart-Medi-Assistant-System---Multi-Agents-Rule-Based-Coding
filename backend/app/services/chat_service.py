@@ -324,7 +324,7 @@ class ChatService:
                 ))
 
             elif agent_name == "rag_agent":
-                # TODO: Implement RAG agent
+                # RAG agent uses the clinical agent's built-in RAG pipeline (FAISS + document retrieval)
                 return self.clinical_agent.answer_medical_question(
                     message,
                     patient_info=patient_info,

@@ -1,6 +1,6 @@
 """Chat API endpoints - POST /api/v1/chat, GET /api/v1/chat/history."""
 import logging
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.schemas.chat_schema import (
@@ -16,6 +16,7 @@ from app.services.chat_service import ChatService
 from app.middleware.auth_middleware import get_current_user, require_role
 from app.extensions import get_db
 from app.agents.clinical_agent import get_clinical_agent
+from app.middleware.rate_limit import limiter
 
 logger = logging.getLogger(__name__)
 
@@ -53,124 +54,39 @@ def safe_text(text: str) -> str:
 
 @router.post(
     "",
-    response_model=ChatResponse,
     status_code=status.HTTP_200_OK,
     summary="Send message to medical AI",
     description="Patient sends message to AI orchestrator for medical guidance"
 )
+@limiter.limit("10/minute")
 def send_message(
-    request: ChatRequest,
+    request: Request,
+    chat_request: ChatRequest,
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
-) -> ChatResponse:
-    """
-    Send message to medical AI.
+) -> dict:
+    """Send message to medical AI."""
+    message = chat_request.message.strip()
+    if not message:
+        raise HTTPException(status_code=400, detail="Message cannot be empty")
 
-    The AI will:
-    1. Analyze the message (via Orchestrator agent)
-    2. Route to appropriate specialist (Clinical, RAG, Medication, etc.)
-    3. Retrieve relevant medical documents from knowledge base
-    4. Generate evidence-based response with sources
+    service = ChatService(db)
+    agent_response = service.handle_message(
+        message=message,
+        user_id=current_user["user_id"],
+    )
 
-    Args:
-        request: ChatRequest with patient message
-        current_user: JWT user info (dependency)
-        db: Database session (dependency)
+    response_text = safe_text(agent_response.get("response", ""))
 
-    Returns:
-        ChatResponse with AI response, sources, and metadata
-
-    Raises:
-        400: Invalid input (message too long, etc.)
-        401: Not authenticated
-        404: Patient profile not found
-        503: AI service unavailable
-    """
-    try:
-        # Validate request
-        if not request.message or not request.message.strip():
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Message cannot be empty"
-            )
-
-        # Initialize service and handle message with safety wrapper
-        service = ChatService(db)
-        try:
-            agent_response = service.handle_message(
-                message=request.message.strip(),
-                user_id=current_user["user_id"],
-            )
-        except Exception as e:
-            # Catch any service errors and return as ChatResponse
-            logger.error("Service error: %s", type(e).__name__)
-            return ChatResponse(
-                response="Internal processing error. Please try again.",
-                sources=[],
-                agent_used="error",
-                confidence_score=0.0,
-                tokens_used=0,
-                context_documents_used=0,
-                error=True,
-            )
-
-        # CRITICAL: Sanitize agent response IMMEDIATELY before any processing
-        raw_text = agent_response.get('response', 'Service error')
-        response_text = safe_text(raw_text)[:500]
-
-        # Check for errors from service
-        if agent_response.get("error"):
-            response_text = safe_text(agent_response.get("response", ""))
-
-            return ChatResponse(
-                response=response_text,
-                sources=[],
-                agent_used="clarification",
-                confidence_score=0.2,
-                tokens_used=0,
-                context_documents_used=0,
-                error=False,
-            )
-
-        # Transform agent response to API response
-        sources = [
-            SourceReference(
-                file=src.get("file", "Unknown"),
-                relevance=src.get("relevance", "0%"),
-                source_type=src.get("source_type", "text"),
-                preview=src.get("preview"),
-            )
-            for src in agent_response.get("sources", [])
-        ]
-
-        return ChatResponse(
-            response=response_text,
-            sources=sources,
-            agent_used=agent_response.get("agent_used", "orchestrator"),
-            confidence_score=agent_response.get("confidence_score", 0.5),
-            tokens_used=agent_response.get("tokens_used", 0),
-            context_documents_used=agent_response.get("context_documents_used", 0),
-            error=False,
-        )
-
-    except HTTPException:
-        # Re-raise HTTP exceptions (validation errors, auth failures)
-        raise
-
-    except Exception as e:
-        # Catch-all: return error ChatResponse instead of raising
-        error_type = type(e).__name__
-        logger.error("Unexpected error in chat: %s", error_type)
-
-        return ChatResponse(
-            response="An error occurred processing your message. Please try again.",
-            sources=[],
-            agent_used="error",
-            confidence_score=0.0,
-            tokens_used=0,
-            context_documents_used=0,
-            error=True,
-        )
+    return {
+        "response": response_text,
+        "sources": agent_response.get("sources", []),
+        "agent_used": agent_response.get("agent_used", "unknown"),
+        "confidence_score": agent_response.get("confidence_score", 0.0),
+        "tokens_used": agent_response.get("tokens_used", 0),
+        "context_documents_used": agent_response.get("context_documents_used", 0),
+        "error": agent_response.get("error", False),
+    }
 
 
 @router.get(
