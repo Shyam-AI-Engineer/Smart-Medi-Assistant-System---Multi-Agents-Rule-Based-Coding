@@ -84,7 +84,7 @@ try:
     # Test connection
     redis_client.ping()
 except redis.ConnectionError:
-    print("⚠️  Redis not available - caching disabled")
+    print("WARNING: Redis not available - caching disabled")
     redis_client = None
 
 
@@ -116,9 +116,9 @@ def init_db():
     """
     from app.models import BaseModel  # Import here to avoid circular imports
 
-    print("📊 Initializing database tables...")
+    print("Initializing database tables...")
     BaseModel.metadata.create_all(bind=engine)
-    print("✅ Database tables initialized")
+    print("Database tables initialized")
 
 
 # ============================================================================
