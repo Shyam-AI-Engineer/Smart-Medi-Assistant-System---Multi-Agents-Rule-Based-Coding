@@ -19,7 +19,7 @@ class AuthService:
         self.db = db
 
     def register(self, request: RegisterRequest) -> TokenResponse:
-        """Register a new patient account and auto-create their patient profile."""
+        """Register a new account and auto-create patient profile if role is patient/doctor."""
         existing = self.db.query(User).filter_by(email=request.email).first()
         if existing:
             raise HTTPException(
@@ -27,21 +27,32 @@ class AuthService:
                 detail="Email already registered",
             )
 
+        # Determine role from request, validate it
+        role_str = request.role or "patient"
+        try:
+            role = UserRole[role_str.upper()]
+        except KeyError:
+            role = UserRole.PATIENT  # Default to patient on invalid role
+            logger.warning(f"Invalid role '{role_str}' provided during registration, defaulting to patient")
+
         user = User(
             email=request.email,
             full_name=request.full_name,
-            role=UserRole.PATIENT,
+            role=role,
             is_active=True,
         )
         user.set_password(request.password)
         self.db.add(user)
         self.db.flush()  # Assigns user.id before commit so Patient FK is valid
 
-        patient = Patient(user_id=user.id)
-        self.db.add(patient)
+        # Only create patient profile for patient and doctor roles
+        if role in [UserRole.PATIENT, UserRole.DOCTOR]:
+            patient = Patient(user_id=user.id)
+            self.db.add(patient)
+
         self.db.commit()
 
-        logger.info(f"New user registered: {user.email}")
+        logger.info(f"New user registered: {user.email} (role: {role.value})")
         return self._build_token_response(user)
 
     def login(self, request: LoginRequest) -> TokenResponse:

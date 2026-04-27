@@ -13,10 +13,10 @@ import { endpoints, getApiErrorMessage } from "@/lib/api";
 function LoginContent() {
   const router = useRouter();
   const search = useSearchParams();
-  const { signIn, isAuthenticated, hydrated } = useAuth();
+  const { signIn, isAuthenticated, hydrated, user } = useAuth();
 
   const initialMode = search.get("mode") === "register" ? "register" : "login";
-  const next = search.get("next") || "/dashboard";
+  const nextParam = search.get("next");
 
   const [mode, setMode] = useState<"login" | "register">(initialMode);
   const [email, setEmail] = useState("");
@@ -26,8 +26,11 @@ function LoginContent() {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    if (hydrated && isAuthenticated) router.replace(next);
-  }, [hydrated, isAuthenticated, router, next]);
+    if (hydrated && isAuthenticated && user) {
+      const next = nextParam || (user.role === "doctor" ? "/doctor/dashboard" : "/dashboard");
+      router.replace(next);
+    }
+  }, [hydrated, isAuthenticated, user, router, nextParam]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -45,6 +48,7 @@ function LoginContent() {
         role: data.role,
         full_name: data.full_name,
       });
+      const next = nextParam || (data.role === "doctor" ? "/doctor/dashboard" : "/dashboard");
       router.replace(next);
     } catch (err) {
       setError(getApiErrorMessage(err, "Unable to sign in. Check your credentials."));
@@ -68,7 +72,7 @@ function LoginContent() {
             </h1>
             <p className="mt-2 text-sm text-ink-muted">
               {mode === "login"
-                ? "Sign in to access your patient dashboard."
+                ? "Sign in to access your dashboard."
                 : "Start monitoring vitals and chatting with the AI in minutes."}
             </p>
           </div>

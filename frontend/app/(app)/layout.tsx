@@ -1,12 +1,27 @@
 "use client";
 
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Sidebar, MobileTopbar } from "@/components/layout/Sidebar";
-import { useRequireAuth } from "@/hooks/useAuth";
+import { useAuth } from "@/hooks/useAuth";
 import { FullPageLoader } from "@/components/ui/Loader";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
-  const { ready } = useRequireAuth();
+  const router = useRouter();
+  const { user, hydrated } = useAuth();
 
+  useEffect(() => {
+    if (!hydrated) return;
+    if (!user) {
+      router.replace("/login");
+      return;
+    }
+    if (user.role === "doctor" || user.role === "admin") {
+      router.replace("/doctor/dashboard");
+    }
+  }, [hydrated, user, router]);
+
+  const ready = hydrated && Boolean(user) && user?.role === "patient";
   if (!ready) return <FullPageLoader />;
 
   return (
