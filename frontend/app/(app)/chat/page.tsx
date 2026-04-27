@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { TypingDots } from "@/components/ui/Loader";
 import { MessageBubble, type ChatBubbleMessage } from "@/components/chat/MessageBubble";
 import { ChatInput } from "@/components/chat/ChatInput";
-import { useSendChat } from "@/hooks/useChat";
+import { useSendChat, useChatHistory } from "@/hooks/useChat";
 import { useMyPatientProfile } from "@/hooks/useVitals";
 import { getApiErrorMessage } from "@/lib/api";
 
@@ -24,10 +24,31 @@ function uid() {
 
 export default function ChatPage() {
   const { data: profile } = useMyPatientProfile();
+  const { data: historyData } = useChatHistory(profile?.id);
   const send = useSendChat();
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<ChatBubbleMessage[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Load chat history on mount
+  useEffect(() => {
+    if (historyData?.items && historyData.items.length > 0) {
+      const loadedMessages = historyData.items.reverse().flatMap((item) => [
+        {
+          id: `hist-user-${item.id}`,
+          role: "user" as const,
+          content: item.user_message,
+        },
+        {
+          id: `hist-ai-${item.id}`,
+          role: "assistant" as const,
+          content: item.ai_response,
+          agent: item.agent_used,
+        },
+      ]);
+      setMessages(loadedMessages);
+    }
+  }, [historyData]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({
