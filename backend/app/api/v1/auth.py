@@ -21,7 +21,7 @@ _security = HTTPBearer()
 )
 @limiter.limit("3/minute")
 def register(
-    _request: Request,
+    request: Request,
     body: RegisterRequest,
     db: Session = Depends(get_db),
 ):
@@ -40,7 +40,7 @@ def register(
 )
 @limiter.limit("5/minute")
 def login(
-    _request: Request,
+    request: Request,
     body: LoginRequest,
     db: Session = Depends(get_db),
 ):
