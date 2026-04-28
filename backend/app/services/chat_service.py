@@ -5,13 +5,13 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 
 from app.models import ChatHistory, Patient
-from app.services.euri_service import EuriService
-from app.services.faiss_service import FAISSService
-from app.agents.orchestrator import OrchestratorAgent
-from app.agents.clinical_agent import ClinicalAgent
-from app.agents.triage_agent import TriageAgent
-from app.agents.medication_agent import MedicationAgent
-from app.agents.monitoring_agent import MonitoringAgent
+from app.services.euri_service import get_euri_service
+from app.services.faiss_service import get_faiss_service
+from app.agents.orchestrator import get_orchestrator_agent
+from app.agents.clinical_agent import get_clinical_agent
+from app.agents.triage_agent import get_triage_agent
+from app.agents.medication_agent import get_medication_agent
+from app.agents.monitoring_agent import get_monitoring_agent
 
 logger = logging.getLogger(__name__)
 
@@ -42,13 +42,13 @@ class ChatService:
         Each request gets the same instances.
         """
         self.db = db
-        self.euri = EuriService()
-        self.faiss = FAISSService()
-        self.orchestrator = OrchestratorAgent()
-        self.clinical_agent = ClinicalAgent()
-        self.triage_agent = TriageAgent()
-        self.medication_agent = MedicationAgent()
-        self.monitoring_agent = MonitoringAgent()
+        self.euri = get_euri_service()
+        self.faiss = get_faiss_service()
+        self.orchestrator = get_orchestrator_agent()
+        self.clinical_agent = get_clinical_agent()
+        self.triage_agent = get_triage_agent()
+        self.medication_agent = get_medication_agent()
+        self.monitoring_agent = get_monitoring_agent()
 
     def _sanitize_response(self, text: str) -> str:
         """Convert Unicode to ASCII-safe equivalents. Handles Windows cp1252 limitation."""
