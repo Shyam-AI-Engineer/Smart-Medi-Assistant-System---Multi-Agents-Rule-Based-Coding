@@ -344,11 +344,7 @@ class FAISSService:
                 context += f"Content: {doc_content}\n"
                 context += "-" * 40 + "\n\n"
 
-            # DEBUG: Log context length and first part
-            logger.info(f"RAG Context assembled: {len(context)} chars, first 500 chars: {context[:500]}")
-            logger.info(f"Full context keys in matches[0]: {list(matches[0]['metadata'].keys()) if matches else 'NO MATCHES'}")
-            print(f"DEBUG [FAISS]: Context assembled with {len(matches)} documents, {len(context)} chars total")
-            print(f"DEBUG [FAISS]: First document: {matches[0]['source_file'] if matches else 'NO MATCHES'}")
+            logger.debug(f"RAG Context assembled: {len(context)} chars, {len(matches)} documents")
             return context
 
         except Exception as e:

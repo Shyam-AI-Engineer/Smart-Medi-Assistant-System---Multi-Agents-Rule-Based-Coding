@@ -61,7 +61,6 @@ class TriageAgent:
             }
         """
         try:
-            print(f"DEBUG [TRIAGE_AGENT]: Assessing urgency: {patient_message[:100]}")
             logger.info(f"Triage agent assessing: {patient_message[:100]}...")
 
             # Step 1: Call Euri to analyze urgency
@@ -163,8 +162,7 @@ class TriageAgent:
             }
         """
         try:
-            print(f"DEBUG [TRIAGE_AGENT]: Assessing vitals: {vitals}")
-            logger.info(f"Triage agent assessing vitals: {vitals}")
+            logger.info(f"Triage agent assessing vitals")
 
             # Build vital signs assessment message
             vitals_summary = self._format_vitals_summary(vitals, patient_info)

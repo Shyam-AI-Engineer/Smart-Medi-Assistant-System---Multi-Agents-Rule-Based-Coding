@@ -56,7 +56,6 @@ class ClinicalAgent:
             }
         """
         try:
-            print(f"DEBUG [CLINICAL_AGENT]: Processing question: {patient_question[:100]}")
             logger.info(f"Clinical agent processing: {patient_question[:100]}...")
 
             # Step 1: Embed the question
@@ -69,10 +68,7 @@ class ClinicalAgent:
                 top_k=5,
                 source_types=["text", "pdf"],  # Medical articles/guidelines
             )
-            print(f"DEBUG [CLINICAL_AGENT]: FAISS search returned {len(context_docs)} documents")
-            for doc in context_docs:
-                print(f"  - {doc['source_file']}: relevance {doc['score']:.1%}")
-            logger.info(f"Retrieved {len(context_docs)} documents")
+            logger.info(f"Retrieved {len(context_docs)} documents from FAISS")
 
             # Format context for LLM
             formatted_context = self.faiss.retrieve_medical_context(
@@ -81,11 +77,7 @@ class ClinicalAgent:
                 top_k=5,
             )
 
-            # DEBUG: Log what context is being sent to LLM
-            logger.info(f"Formatted context for LLM: {len(formatted_context)} chars")
-            logger.info(f"Context starts with: {formatted_context[:300]}")
-            print(f"DEBUG: Formatted context length: {len(formatted_context)} chars")
-            print(f"DEBUG: First 300 chars: {formatted_context[:300]}")
+            logger.debug(f"Formatted context for LLM: {len(formatted_context)} chars")
 
             # Step 3: Generate medical response
             response_text = self.euri.generate_medical_response(
