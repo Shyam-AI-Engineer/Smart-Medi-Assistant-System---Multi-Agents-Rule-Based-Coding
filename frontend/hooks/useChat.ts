@@ -15,8 +15,15 @@ export function useSendChat() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (payload: SendChatPayload) => endpoints.sendChat(payload),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["chat-history"] });
+    onSuccess: (_, variables) => {
+      const patientId = variables.patient_id;
+      if (patientId) {
+        // Invalidate the specific chat history query for this patient
+        queryClient.invalidateQueries({
+          queryKey: ["chat-history", patientId],
+          exact: false, // Match any limit parameter
+        });
+      }
     },
   });
 }
