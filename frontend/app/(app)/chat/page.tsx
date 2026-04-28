@@ -77,6 +77,7 @@ export default function ChatPage() {
           content: res.response,
           agent: res.agent_used,
           sources: res.sources,
+          confidence_score: res.confidence_score,
         },
       ]);
     } catch (err) {

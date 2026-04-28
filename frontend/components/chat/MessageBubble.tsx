@@ -8,6 +8,7 @@ export interface ChatBubbleMessage {
   content: string;
   agent?: string;
   sources?: { file: string; relevance?: string }[];
+  confidence_score?: number;
   error?: boolean;
 }
 
@@ -38,10 +39,21 @@ export function MessageBubble({ message }: { message: ChatBubbleMessage }) {
           {message.content}
         </div>
 
-        {!isUser && (message.agent || message.sources?.length) && (
+        {!isUser && (message.agent || message.sources?.length || message.confidence_score !== undefined) && (
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
             {message.agent && (
               <Badge tone="brand">{message.agent}</Badge>
+            )}
+            {message.confidence_score !== undefined && (
+              <span className={cn(
+                "text-xs font-medium",
+                message.confidence_score >= 0.8 ? "text-success-600" :
+                message.confidence_score >= 0.5 ? "text-warning-600" :
+                "text-danger-600"
+              )}>
+                {message.confidence_score >= 0.8 ? "High" :
+                 message.confidence_score >= 0.5 ? "Medium" : "Low"} confidence
+              </span>
             )}
             {message.sources?.slice(0, 3).map((src, i) => (
               <Badge key={i} tone="neutral">

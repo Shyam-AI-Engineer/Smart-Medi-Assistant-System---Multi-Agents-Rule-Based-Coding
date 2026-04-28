@@ -85,7 +85,6 @@ class OrchestratorAgent:
                     "agent_to_call": "medication_agent",
                 }
 
-            print(f"DEBUG [ORCHESTRATOR]: Analyzing message: {patient_message[:100]}")
             logger.info(f"Orchestrator routing message: {patient_message[:100]}...")
 
             # Step 3: Call Euri to determine routing for general queries
@@ -94,10 +93,6 @@ class OrchestratorAgent:
                 chat_history=chat_history,
             )
 
-            print(
-                f"DEBUG [ORCHESTRATOR]: Routed to {routing_result.get('agent_to_call')} "
-                f"(confidence: {routing_result.get('confidence'):.2f})"
-            )
             logger.info(
                 f"Routed to {routing_result.get('agent_to_call')} "
                 f"with confidence {routing_result.get('confidence'):.2f}"
@@ -116,7 +111,6 @@ class OrchestratorAgent:
                 "error": str(e),
                 "fallback": True,
             }
-            print(f"DEBUG [ORCHESTRATOR]: Falling back to clinical agent due to: {e}")
             return fallback_result
 
     def should_escalate_to_triage(
@@ -150,7 +144,6 @@ class OrchestratorAgent:
         for keyword in critical_keywords:
             if keyword in message_lower:
                 logger.warning(f"Critical symptom detected: {keyword}")
-                print(f"DEBUG [ORCHESTRATOR]: CRITICAL - {keyword} detected!")
                 return True
 
         return False
