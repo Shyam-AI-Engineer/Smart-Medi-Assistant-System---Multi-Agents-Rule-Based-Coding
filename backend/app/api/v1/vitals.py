@@ -7,7 +7,7 @@ Routes:
 """
 import logging
 from typing import Dict, Any, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session
 
 
@@ -24,6 +24,7 @@ from app.schemas.vitals_schema import (
     VitalsHistoryItem,
 )
 from app.middleware.auth_middleware import get_current_user
+from app.middleware.rate_limit import limiter
 from app.extensions import get_db
 from app.agents.monitoring_agent import get_monitoring_agent
 from app.services.vitals_service import VitalsService
@@ -40,7 +41,9 @@ router = APIRouter(prefix="/vitals", tags=["vitals"])
     summary="Analyze vital signs",
     description="Analyze vital signs and detect anomalies with automatic escalation"
 )
+@limiter.limit("20/minute")
 def analyze_vitals(
+    _request: Request,
     request: VitalsAnalyzeRequest,
     current_user: dict = Depends(get_current_user),
 ) -> VitalsAnalyzeResponse:
@@ -173,7 +176,9 @@ def analyze_vitals(
     summary="Store vitals and analyze",
     description="Persist a vitals reading, run AI analysis, and return trend vs recent history",
 )
+@limiter.limit("30/minute")
 def store_vitals(
+    _request: Request,
     request: VitalsStoreRequest,
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),

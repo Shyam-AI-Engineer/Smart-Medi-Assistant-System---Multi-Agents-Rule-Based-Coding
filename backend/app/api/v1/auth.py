@@ -1,10 +1,11 @@
 """Auth routes: register, login, token refresh, current user."""
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from fastapi.security import HTTPBearer
 from sqlalchemy.orm import Session
 
 from app.extensions import get_db
 from app.middleware.auth_middleware import get_current_user
+from app.middleware.rate_limit import limiter
 from app.services.auth_service import AuthService
 from app.schemas.auth_schema import RegisterRequest, LoginRequest, TokenResponse, MeResponse
 
@@ -18,8 +19,10 @@ _security = HTTPBearer()
     status_code=201,
     summary="Register a new patient account",
 )
+@limiter.limit("3/minute")
 def register(
-    request: RegisterRequest,
+    _request: Request,
+    body: RegisterRequest,
     db: Session = Depends(get_db),
 ):
     """
@@ -27,7 +30,7 @@ def register(
 
     Returns access + refresh JWT tokens on success.
     """
-    return AuthService(db).register(request)
+    return AuthService(db).register(body)
 
 
 @router.post(
@@ -35,8 +38,10 @@ def register(
     response_model=TokenResponse,
     summary="Login with email and password",
 )
+@limiter.limit("5/minute")
 def login(
-    request: LoginRequest,
+    _request: Request,
+    body: LoginRequest,
     db: Session = Depends(get_db),
 ):
     """
@@ -44,7 +49,7 @@ def login(
 
     Returns access + refresh JWT tokens.
     """
-    return AuthService(db).login(request)
+    return AuthService(db).login(body)
 
 
 @router.post(
