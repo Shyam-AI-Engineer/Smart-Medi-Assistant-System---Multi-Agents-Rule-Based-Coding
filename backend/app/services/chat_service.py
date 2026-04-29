@@ -433,6 +433,43 @@ class ChatService:
             self.db.rollback()
             return False
 
+    def submit_feedback(
+        self,
+        chat_id: str,
+        patient_id: str,
+        feedback: str,
+    ) -> bool:
+        """Save patient feedback (thumbs_up/thumbs_down) on a chat message.
+
+        Args:
+            chat_id: ChatHistory record ID
+            patient_id: Patient ID (for security scoping)
+            feedback: "thumbs_up" or "thumbs_down"
+
+        Returns:
+            True if feedback was saved, False if chat not found or error
+        """
+        try:
+            chat = self.db.query(ChatHistory).filter_by(
+                id=chat_id,
+                patient_id=patient_id,
+            ).first()
+
+            if not chat:
+                logger.warning(f"Chat not found: {chat_id} for patient {patient_id}")
+                return False
+
+            chat.feedback = feedback
+            chat.feedback_at = datetime.utcnow()
+            self.db.commit()
+            logger.info(f"Saved feedback '{feedback}' for chat {chat_id}")
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to save feedback: {e}")
+            self.db.rollback()
+            return False
+
     def _error_response(
         self,
         message: str,
@@ -567,6 +604,7 @@ class ChatService:
                         "ai_response": c.ai_response,
                         "agent_used": c.agent_used,
                         "confidence_score": c.confidence_score,
+                        "feedback": c.feedback,
                         "created_at": c.created_at.isoformat(),
                     }
                     for c in items

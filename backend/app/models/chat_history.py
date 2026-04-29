@@ -1,5 +1,7 @@
 """Chat history model - conversations between patient and AI."""
-from sqlalchemy import String, ForeignKey, Text, Integer, Float
+from typing import Optional
+from datetime import datetime
+from sqlalchemy import String, ForeignKey, Text, Integer, Float, DateTime
 from sqlalchemy.orm import Mapped, mapped_column
 from .base import BaseModel
 
@@ -43,6 +45,18 @@ class ChatHistory(BaseModel):
         Integer,
         default=0
     )  # OpenAI API token count (for cost tracking)
+
+    feedback: Mapped[Optional[str]] = mapped_column(
+        String(10),
+        nullable=True,
+        default=None
+    )  # "thumbs_up" | "thumbs_down" - patient feedback on response
+
+    feedback_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime,
+        nullable=True,
+        default=None
+    )  # When patient submitted feedback
 
     def __repr__(self) -> str:
         return (

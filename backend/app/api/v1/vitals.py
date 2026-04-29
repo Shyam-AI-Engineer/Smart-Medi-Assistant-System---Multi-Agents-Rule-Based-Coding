@@ -4,10 +4,12 @@ Routes:
   POST /api/v1/vitals/          – store vitals + AI analysis + trend
   GET  /api/v1/vitals/{patient_id} – vitals history (latest first)
   POST /api/v1/vitals/analyze   – stateless analysis only (no storage)
+  WS   /api/v1/vitals/ws/{patient_id} – real-time vitals streaming
 """
 import logging
+import json
 from typing import Dict, Any, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status, WebSocket, WebSocketDisconnect
 from sqlalchemy.orm import Session
 
 
@@ -43,8 +45,8 @@ router = APIRouter(prefix="/vitals", tags=["vitals"])
 )
 @limiter.limit("20/minute")
 def analyze_vitals(
-    _request: Request,
-    request: VitalsAnalyzeRequest,
+    request: Request,
+    vitals_request: VitalsAnalyzeRequest,
     current_user: dict = Depends(get_current_user),
 ) -> VitalsAnalyzeResponse:
     """
@@ -73,18 +75,18 @@ def analyze_vitals(
     try:
         # Build vitals dict from request (only include non-None fields)
         vitals: Dict[str, float] = {}
-        if request.heart_rate is not None:
-            vitals["heart_rate"] = request.heart_rate
-        if request.blood_pressure_systolic is not None:
-            vitals["blood_pressure_systolic"] = request.blood_pressure_systolic
-        if request.blood_pressure_diastolic is not None:
-            vitals["blood_pressure_diastolic"] = request.blood_pressure_diastolic
-        if request.oxygen_saturation is not None:
-            vitals["oxygen_saturation"] = request.oxygen_saturation
-        if request.temperature is not None:
-            vitals["temperature"] = request.temperature
-        if request.respiratory_rate is not None:
-            vitals["respiratory_rate"] = request.respiratory_rate
+        if vitals_request.heart_rate is not None:
+            vitals["heart_rate"] = vitals_request.heart_rate
+        if vitals_request.blood_pressure_systolic is not None:
+            vitals["blood_pressure_systolic"] = vitals_request.blood_pressure_systolic
+        if vitals_request.blood_pressure_diastolic is not None:
+            vitals["blood_pressure_diastolic"] = vitals_request.blood_pressure_diastolic
+        if vitals_request.oxygen_saturation is not None:
+            vitals["oxygen_saturation"] = vitals_request.oxygen_saturation
+        if vitals_request.temperature is not None:
+            vitals["temperature"] = vitals_request.temperature
+        if vitals_request.respiratory_rate is not None:
+            vitals["respiratory_rate"] = vitals_request.respiratory_rate
 
         # Validate that at least one vital was provided
         if not vitals:
@@ -95,11 +97,11 @@ def analyze_vitals(
 
         # Build patient info dict if provided
         patient_info: Optional[Dict[str, Any]] = None
-        if request.patient_info:
+        if vitals_request.patient_info:
             patient_info = {
-                "age": request.patient_info.age,
-                "medical_history": request.patient_info.medical_history,
-                "current_medications": request.patient_info.current_medications,
+                "age": vitals_request.patient_info.age,
+                "medical_history": vitals_request.patient_info.medical_history,
+                "current_medications": vitals_request.patient_info.current_medications,
             }
 
         # Call monitoring agent
@@ -178,8 +180,8 @@ def analyze_vitals(
 )
 @limiter.limit("30/minute")
 def store_vitals(
-    _request: Request,
-    request: VitalsStoreRequest,
+    request: Request,
+    vitals_request: VitalsStoreRequest,
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> VitalsStoreResponse:
@@ -208,10 +210,10 @@ def store_vitals(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Patient profile not found"
             )
-        request.patient_id = patient.id
+        vitals_request.patient_id = patient.id
 
         service = VitalsService(db)
-        result = service.store_and_analyze(request, current_user)
+        result = service.store_and_analyze(vitals_request, current_user)
 
         return VitalsStoreResponse(
             record=VitalRecordResponse.model_validate(result["record"]),
@@ -277,3 +279,112 @@ def get_vitals_history(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Unable to retrieve vitals history. Please try again later.",
         )
+
+
+@router.websocket("/ws/{patient_id}")
+async def websocket_vitals(
+    websocket: WebSocket,
+    patient_id: str,
+):
+    """
+    WebSocket endpoint for real-time vitals streaming and analysis.
+
+    Client connects and can send vitals in JSON format:
+    {
+        "heart_rate": 85,
+        "blood_pressure_systolic": 120,
+        "blood_pressure_diastolic": 80,
+        "temperature": 37.2,
+        "oxygen_saturation": 98,
+        "respiratory_rate": 16
+    }
+
+    Server responds with analysis:
+    {
+        "status": "success",
+        "analysis": {...},
+        "timestamp": "2026-04-29T10:30:00"
+    }
+
+    Or on error:
+    {
+        "status": "error",
+        "message": "Error message"
+    }
+    """
+    try:
+        # Accept the connection
+        await websocket.accept()
+        logger.info(f"WebSocket connected for patient {patient_id}")
+
+        # Simple counter for demo purposes
+        message_count = 0
+
+        while True:
+            # Receive vitals from client
+            data = await websocket.receive_text()
+            message_count += 1
+
+            try:
+                vitals_data = json.loads(data)
+
+                # Build vitals dict (only include non-None fields)
+                vitals: Dict[str, float] = {}
+                if vitals_data.get("heart_rate") is not None:
+                    vitals["heart_rate"] = float(vitals_data["heart_rate"])
+                if vitals_data.get("blood_pressure_systolic") is not None:
+                    vitals["blood_pressure_systolic"] = float(vitals_data["blood_pressure_systolic"])
+                if vitals_data.get("blood_pressure_diastolic") is not None:
+                    vitals["blood_pressure_diastolic"] = float(vitals_data["blood_pressure_diastolic"])
+                if vitals_data.get("temperature") is not None:
+                    vitals["temperature"] = float(vitals_data["temperature"])
+                if vitals_data.get("oxygen_saturation") is not None:
+                    vitals["oxygen_saturation"] = float(vitals_data["oxygen_saturation"])
+                if vitals_data.get("respiratory_rate") is not None:
+                    vitals["respiratory_rate"] = float(vitals_data["respiratory_rate"])
+
+                if not vitals:
+                    await websocket.send_json({
+                        "status": "error",
+                        "message": "No vital measurements provided"
+                    })
+                    continue
+
+                # Analyze vitals
+                logger.info(f"WebSocket vitals received (msg #{message_count}): {list(vitals.keys())}")
+                agent = get_monitoring_agent()
+                analysis = agent.analyze_vitals(vitals=vitals, patient_info=None)
+
+                # Send analysis result back to client
+                await websocket.send_json({
+                    "status": "success",
+                    "vitals": vitals,
+                    "analysis": analysis,
+                    "timestamp": analysis.get("timestamp"),
+                })
+
+            except json.JSONDecodeError:
+                await websocket.send_json({
+                    "status": "error",
+                    "message": "Invalid JSON format"
+                })
+            except ValueError as e:
+                await websocket.send_json({
+                    "status": "error",
+                    "message": f"Invalid vital value: {str(e)}"
+                })
+            except Exception as e:
+                logger.error(f"WebSocket analysis error: {e}")
+                await websocket.send_json({
+                    "status": "error",
+                    "message": "Failed to analyze vitals"
+                })
+
+    except WebSocketDisconnect:
+        logger.info(f"WebSocket disconnected for patient {patient_id}")
+    except Exception as e:
+        logger.error(f"WebSocket error for patient {patient_id}: {e}")
+        try:
+            await websocket.close(code=status.WS_1011_SERVER_ERROR)
+        except:
+            pass

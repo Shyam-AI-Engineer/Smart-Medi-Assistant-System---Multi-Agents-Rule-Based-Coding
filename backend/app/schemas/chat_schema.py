@@ -185,6 +185,25 @@ class IngestDocumentResponse(BaseModel):
         }
 
 
+class FeedbackRequest(BaseModel):
+    """Patient feedback on AI response."""
+    chat_id: str = Field(..., description="ChatHistory record ID")
+    feedback: str = Field(
+        ...,
+        pattern="^(thumbs_up|thumbs_down)$",
+        description="Feedback type: thumbs_up or thumbs_down"
+    )
+
+
+class FeedbackResponse(BaseModel):
+    """Result of submitting feedback."""
+    success: bool = Field(..., description="Whether feedback was saved")
+    feedback: Optional[str] = Field(
+        default=None,
+        description="Feedback value that was saved"
+    )
+
+
 class ErrorResponse(BaseModel):
     """Standard error response."""
     error: str = Field(..., description="Error message (user-friendly)")
