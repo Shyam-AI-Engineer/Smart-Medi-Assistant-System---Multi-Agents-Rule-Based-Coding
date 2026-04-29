@@ -4,10 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import { Sparkles, Stethoscope, MessageSquarePlus, ShieldAlert } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/Button";
-import { TypingDots } from "@/components/ui/Loader";
 import { MessageBubble, type ChatBubbleMessage } from "@/components/chat/MessageBubble";
 import { ChatInput } from "@/components/chat/ChatInput";
-import { useSendChat, useChatHistory } from "@/hooks/useChat";
+import { useStreamChat, useChatHistory, useSubmitFeedback } from "@/hooks/useChat";
 import { useMyPatientProfile } from "@/hooks/useVitals";
 import { getApiErrorMessage } from "@/lib/api";
 
@@ -25,7 +24,8 @@ function uid() {
 export default function ChatPage() {
   const { data: profile } = useMyPatientProfile();
   const { data: historyData } = useChatHistory(profile?.id);
-  const send = useSendChat();
+  const { stream, isStreaming } = useStreamChat();
+  const feedbackMutation = useSubmitFeedback();
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<ChatBubbleMessage[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -44,6 +44,8 @@ export default function ChatPage() {
           role: "assistant" as const,
           content: item.ai_response,
           agent: item.agent_used,
+          confidence_score: item.confidence_score,
+          feedback: item.feedback,
         },
       ]);
       setMessages(loadedMessages);
@@ -55,46 +57,70 @@ export default function ChatPage() {
       top: scrollRef.current.scrollHeight,
       behavior: "smooth",
     });
-  }, [messages, send.isPending]);
+  }, [messages]);
 
   async function handleSend(text?: string) {
     const content = (text ?? input).trim();
-    if (!content) return;
+    if (!content || isStreaming) return;
     setInput("");
-    const userMsg: ChatBubbleMessage = { id: uid(), role: "user", content };
-    setMessages((m) => [...m, userMsg]);
 
-    try {
-      const res = await send.mutateAsync({
-        message: content,
-        patient_id: profile?.id,
-      });
-      setMessages((m) => [
-        ...m,
-        {
-          id: uid(),
-          role: "assistant",
-          content: res.response,
-          agent: res.agent_used,
-          sources: res.sources,
-          confidence_score: res.confidence_score,
-        },
-      ]);
-    } catch (err) {
-      setMessages((m) => [
-        ...m,
-        {
-          id: uid(),
-          role: "assistant",
-          content: getApiErrorMessage(err, "The AI service is temporarily unavailable."),
-          error: true,
-        },
-      ]);
-    }
+    const userMsg: ChatBubbleMessage = { id: uid(), role: "user", content };
+    const assistantId = uid();
+    const assistantMsg: ChatBubbleMessage = {
+      id: assistantId,
+      role: "assistant",
+      content: "",
+      isStreaming: true,
+    };
+    setMessages((m) => [...m, userMsg, assistantMsg]);
+
+    await stream(
+      { message: content, patient_id: profile?.id },
+      (token) => {
+        setMessages((m) =>
+          m.map((msg) =>
+            msg.id === assistantId
+              ? { ...msg, content: msg.content + token }
+              : msg,
+          ),
+        );
+      },
+      (meta) => {
+        setMessages((m) =>
+          m.map((msg) =>
+            msg.id === assistantId
+              ? {
+                  ...msg,
+                  isStreaming: false,
+                  agent: meta.agent_used,
+                  confidence_score: meta.confidence_score,
+                  sources: meta.sources,
+                }
+              : msg,
+          ),
+        );
+      },
+      (errMsg) => {
+        setMessages((m) =>
+          m.map((msg) =>
+            msg.id === assistantId
+              ? { ...msg, isStreaming: false, content: errMsg, error: true }
+              : msg,
+          ),
+        );
+      },
+    );
   }
 
   function clearChat() {
     setMessages([]);
+  }
+
+  function handleFeedback(msgId: string, value: "thumbs_up" | "thumbs_down") {
+    setMessages((m) =>
+      m.map((msg) => (msg.id === msgId ? { ...msg, feedback: value } : msg))
+    );
+    feedbackMutation.mutate({ chatId: msgId, feedback: value });
   }
 
   const empty = messages.length === 0;
@@ -115,10 +141,7 @@ export default function ChatPage() {
         />
       </div>
 
-      <div
-        ref={scrollRef}
-        className="flex-1 min-h-0 overflow-y-auto"
-      >
+      <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto">
         <div className="container max-w-4xl py-6">
           {empty ? (
             <div className="py-12">
@@ -162,18 +185,14 @@ export default function ChatPage() {
           ) : (
             <div className="space-y-5 py-2">
               {messages.map((m) => (
-                <MessageBubble key={m.id} message={m} />
+                <MessageBubble
+                  key={m.id}
+                  message={{
+                    ...m,
+                    onFeedback: m.role === "assistant" ? handleFeedback : undefined,
+                  }}
+                />
               ))}
-              {send.isPending && (
-                <div className="msg-enter flex gap-3">
-                  <div className="size-8 shrink-0 rounded-full bg-bg-elevated border border-border flex items-center justify-center text-brand-700">
-                    <Stethoscope className="size-4" />
-                  </div>
-                  <div className="px-4 py-3 rounded-2xl rounded-tl-md bg-bg-elevated border border-border shadow-card">
-                    <TypingDots />
-                  </div>
-                </div>
-              )}
             </div>
           )}
         </div>
@@ -185,7 +204,7 @@ export default function ChatPage() {
             value={input}
             onChange={setInput}
             onSubmit={() => handleSend()}
-            disabled={send.isPending}
+            disabled={isStreaming}
           />
           <p className="mt-2 text-center text-xs text-ink-subtle">
             AI responses can be inaccurate. Always verify with a clinician.

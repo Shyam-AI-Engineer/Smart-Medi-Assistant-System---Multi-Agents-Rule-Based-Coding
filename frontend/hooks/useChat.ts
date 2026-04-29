@@ -1,7 +1,8 @@
 "use client";
 
+import { useCallback, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { endpoints, type SendChatPayload } from "@/lib/api";
+import { endpoints, sendChatStream, type SendChatPayload, type ChatStreamMeta } from "@/lib/api";
 
 export function useChatHistory(patientId: string | undefined, limit = 50) {
   return useQuery({
@@ -16,14 +17,57 @@ export function useSendChat() {
   return useMutation({
     mutationFn: (payload: SendChatPayload) => endpoints.sendChat(payload),
     onSuccess: (_, variables) => {
-      const patientId = variables.patient_id;
-      if (patientId) {
-        // Invalidate the specific chat history query for this patient
-        queryClient.invalidateQueries({
-          queryKey: ["chat-history", patientId],
-          exact: false, // Match any limit parameter
-        });
+      queryClient.invalidateQueries({
+        queryKey: ["chat-history", variables.patient_id],
+        exact: false,
+      });
+    },
+  });
+}
+
+export function useStreamChat() {
+  const queryClient = useQueryClient();
+  const [isStreaming, setIsStreaming] = useState(false);
+
+  const stream = useCallback(
+    async (
+      payload: SendChatPayload,
+      onToken: (token: string) => void,
+      onDone: (meta: ChatStreamMeta) => void,
+      onError: (msg: string) => void,
+    ) => {
+      setIsStreaming(true);
+      try {
+        await sendChatStream(
+          payload,
+          onToken,
+          (meta) => {
+            queryClient.invalidateQueries({
+              queryKey: ["chat-history", payload.patient_id],
+              exact: false,
+            });
+            onDone(meta);
+          },
+          onError,
+        );
+      } finally {
+        setIsStreaming(false);
       }
     },
+    [queryClient],
+  );
+
+  return { stream, isStreaming };
+}
+
+export function useSubmitFeedback() {
+  return useMutation({
+    mutationFn: ({
+      chatId,
+      feedback,
+    }: {
+      chatId: string;
+      feedback: "thumbs_up" | "thumbs_down";
+    }) => endpoints.submitFeedback(chatId, feedback),
   });
 }

@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { Loader } from "@/components/ui/Loader";
 import { VitalsForm, type VitalsFormValues } from "@/components/vitals/VitalsForm";
 import { AnalysisResult } from "@/components/vitals/AnalysisResult";
+import { RealtimeVitalsWidget } from "@/components/vitals/RealtimeVitalsWidget";
 import { useMyPatientProfile, useStoreVitals, useAnalyzeVitals } from "@/hooks/useVitals";
 import { getApiErrorMessage, type VitalsAnalysis } from "@/lib/api";
 
@@ -58,6 +59,7 @@ export default function VitalsPage() {
         </div>
       ) : (
         <div className="mt-6 space-y-6">
+          {profile?.id && <RealtimeVitalsWidget patientId={profile.id} />}
           <VitalsForm onSubmit={onSubmit} loading={submitting} />
 
           {error && (
