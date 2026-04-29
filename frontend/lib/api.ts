@@ -133,6 +133,7 @@ export interface ChatMessage {
   ai_response: string;
   agent_used?: string;
   confidence_score?: number;
+  feedback?: "thumbs_up" | "thumbs_down" | null;
   created_at?: string;
 }
 
@@ -158,6 +159,74 @@ export interface ChatHistoryResponse {
   limit: number;
   offset: number;
   has_next: boolean;
+}
+
+export interface ChatStreamMeta {
+  agent_used: string;
+  confidence_score: number;
+  sources?: ChatResponse["sources"];
+  context_documents_used?: number;
+}
+
+export async function sendChatStream(
+  payload: SendChatPayload,
+  onToken: (token: string) => void,
+  onDone: (meta: ChatStreamMeta) => void,
+  onError: (msg: string) => void,
+): Promise<void> {
+  const streamURL =
+    (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000") +
+    "/api/v1/chat/stream";
+
+  const { auth: authLib } = await import("./auth");
+  const token = authLib.getToken();
+
+  let res: Response;
+  try {
+    res = await fetch(streamURL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify(payload),
+    });
+  } catch {
+    onError("Connection failed. Please check your network.");
+    return;
+  }
+
+  if (!res.ok) {
+    onError("AI service unavailable. Please try again.");
+    return;
+  }
+
+  const reader = res.body!.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+
+    for (const line of lines) {
+      if (!line.startsWith("data: ")) continue;
+      const data = line.slice(6).trim();
+      if (!data) continue;
+      try {
+        const event = JSON.parse(data);
+        if (event.type === "token") onToken(event.content);
+        else if (event.type === "done") onDone(event as ChatStreamMeta);
+        else if (event.type === "error") onError(event.content ?? "Stream error");
+      } catch {
+        // malformed SSE line — skip
+      }
+    }
+  }
 }
 
 export interface PatientProfile {
@@ -228,6 +297,21 @@ export interface PatientDetailResponse {
   summary: PatientDetailSummary;
 }
 
+export interface TranscribeResponse {
+  transcript: string;
+  language: string;
+  agent_used: string;
+}
+
+export async function transcribeAudio(audioBlob: Blob): Promise<TranscribeResponse> {
+  const formData = new FormData();
+  formData.append("audio", audioBlob, "recording.webm");
+  const response = await api.post<TranscribeResponse>("/voice/transcribe", formData, {
+    timeout: 60_000,
+  });
+  return response.data;
+}
+
 export const endpoints = {
   // Auth
   login: (payload: LoginPayload) =>
@@ -256,6 +340,8 @@ export const endpoints = {
     api.post<ChatResponse>("/chat", payload).then((r) => r.data),
   chatHistory: (patientId: string, limit = 50, offset = 0) =>
     api.get<ChatHistoryResponse>(`/chat/history`, { params: { patient_id: patientId, limit, offset } }).then((r) => r.data),
+  submitFeedback: (chatId: string, feedback: "thumbs_up" | "thumbs_down") =>
+    api.post("/chat/feedback", { chat_id: chatId, feedback }).then((r) => r.data),
 
   // Doctor Dashboard
   doctorPatients: (limit = 20, offset = 0) =>
