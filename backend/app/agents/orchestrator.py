@@ -55,26 +55,29 @@ class OrchestratorAgent:
         try:
             message_lower = patient_message.lower()
 
-            # Step 1: Check for vital sign keywords (fast path)
-            vital_keywords = [
-                "heart rate", "pulse", "bp", "blood pressure",
-                "oxygen", "spo2", "temperature", "fever", "temp",
-                "respiratory rate", "breathing", "vitals"
+            # Step 1: Check for treatment/symptom queries (route to clinical agent with FAISS)
+            # These should be answered with medical knowledge base documents
+            treatment_keywords = [
+                "treatment for", "how to treat", "how do i treat",
+                "cure for", "what helps", "what should i do for",
+                "remedy for", "best way to treat", "what medicine",
+                "what drug", "treat my", "treatment of"
             ]
-            if any(keyword in message_lower for keyword in vital_keywords):
-                logger.info("Vital sign query detected - routing to monitoring_agent")
+            if any(keyword in message_lower for keyword in treatment_keywords):
+                logger.info("Treatment query detected - routing to clinical_agent with FAISS")
                 return {
-                    "routing_intent": "monitoring",
+                    "routing_intent": "clinical",
                     "confidence": 0.98,
-                    "reason": "User asked about vital signs",
-                    "agent_to_call": "monitoring_agent",
+                    "reason": "User asked for treatment recommendations",
+                    "agent_to_call": "clinical_agent",
                 }
 
-            # Step 2: Check for medication keywords
+            # Step 2: Check for medication safety/interaction keywords (rule-based lookup)
             medication_keywords = [
-                "medication", "drug", "pill", "tablet", "medicine",
+                "medication", "drug", "pill", "tablet",
                 "interaction", "contraindication", "side effect",
-                "can i take", "is it safe to take"
+                "can i take", "is it safe to take",
+                "taking", "currently on"
             ]
             if any(keyword in message_lower for keyword in medication_keywords):
                 logger.info("Medication query detected - routing to medication_agent")
@@ -83,6 +86,23 @@ class OrchestratorAgent:
                     "confidence": 0.98,
                     "reason": "User asked about medications or drugs",
                     "agent_to_call": "medication_agent",
+                }
+
+            # Step 2: Check for vital sign keywords (fast path)
+            # NOTE: Does NOT include "fever" or "temperature" as keywords to avoid
+            # routing treatment questions to monitoring agent
+            vital_keywords = [
+                "heart rate", "pulse", "bp", "blood pressure",
+                "oxygen", "spo2", "respiratory rate", "breathing", "vitals",
+                "measure", "record vitals", "my heart rate is", "my bp is"
+            ]
+            if any(keyword in message_lower for keyword in vital_keywords):
+                logger.info("Vital sign query detected - routing to monitoring_agent")
+                return {
+                    "routing_intent": "monitoring",
+                    "confidence": 0.98,
+                    "reason": "User asked about vital signs",
+                    "agent_to_call": "monitoring_agent",
                 }
 
             logger.info(f"Orchestrator routing message: {patient_message[:100]}...")

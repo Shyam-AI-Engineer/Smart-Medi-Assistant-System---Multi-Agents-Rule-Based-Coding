@@ -89,8 +89,8 @@ class TriageAgent:
                 warning_signs=warning_signs,
             )
 
-            print(
-                f"DEBUG [TRIAGE_AGENT]: Assessed urgency={urgency_level}, "
+            logger.debug(
+                f"Assessed urgency={urgency_level}, "
                 f"severity={severity_score}/10, escalation={escalation_path}"
             )
 

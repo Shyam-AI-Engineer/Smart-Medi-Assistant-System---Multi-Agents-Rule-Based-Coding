@@ -126,6 +126,76 @@ class ClinicalAgent:
                 "error": True,
             }
 
+    def answer_medical_question_stream(
+        self,
+        patient_question: str,
+        patient_info: Optional[Dict[str, Any]] = None,
+    ):
+        """
+        Stream medical response tokens.
+
+        Performs FAISS lookup + context building synchronously, then returns
+        (stream_generator, metadata) so the caller can yield SSE tokens.
+
+        Returns:
+            Tuple of (openai_stream, metadata_dict) where metadata contains
+            sources, confidence_score, agent_used, context_documents_used.
+        """
+        try:
+            question_embedding = self.euri.embed_text(patient_question)
+
+            context_docs = self.faiss.search_medical_context(
+                query_embedding=question_embedding,
+                top_k=5,
+                source_types=["text", "pdf"],
+            )
+
+            formatted_context = self.faiss.retrieve_medical_context(
+                query_embedding=question_embedding,
+                patient_id=patient_info.get("patient_id") if patient_info else None,
+                top_k=5,
+            )
+
+            sources = [
+                {
+                    "file": doc["source_file"],
+                    "type": doc["source_type"],
+                    "relevance": f"{doc['score']:.1%}",
+                    "excerpt": doc["content_preview"][:150],
+                }
+                for doc in context_docs[:3]
+            ]
+
+            avg_relevance = (
+                sum(doc["score"] for doc in context_docs) / len(context_docs)
+                if context_docs else 0.5
+            )
+
+            stream = self.euri.generate_medical_response(
+                patient_question=patient_question,
+                medical_context=formatted_context,
+                patient_info=patient_info,
+                stream=True,
+            )
+
+            metadata = {
+                "sources": sources,
+                "confidence_score": min(0.99, avg_relevance),
+                "agent_used": self.agent_name,
+                "context_documents_used": len(context_docs),
+            }
+
+            return stream, metadata
+
+        except Exception as e:
+            logger.error(f"Clinical agent stream failed: {e}")
+            return None, {
+                "sources": [],
+                "confidence_score": 0.0,
+                "agent_used": self.agent_name,
+                "error": True,
+            }
+
     def analyze_symptoms(
         self,
         symptoms: str,
