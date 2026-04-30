@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Loader } from "@/components/ui/Loader";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { MetricCard } from "@/components/dashboard/MetricCard";
+import { MetricCard, type Trend } from "@/components/dashboard/MetricCard";
 import { VitalsChart, type ChartPoint } from "@/components/dashboard/VitalsChart";
 import { useMyPatientProfile, useVitalsHistory } from "@/hooks/useVitals";
 import { formatDateTime, relativeTime } from "@/lib/format";
@@ -30,7 +30,7 @@ function buildSeries(records: VitalRecord[], metric: Metric): ChartPoint[] {
     }));
 }
 
-function computeTrend(records: VitalRecord[], metric: Metric, lowerIsBad = false) {
+function computeTrend(records: VitalRecord[], metric: Metric, lowerIsBad = false): Trend {
   const values = records
     .map((r) => r[metric])
     .filter((v): v is number => typeof v === "number");

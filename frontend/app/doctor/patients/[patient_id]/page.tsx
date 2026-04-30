@@ -2,19 +2,107 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useMemo } from "react";
-import { ArrowLeft, Calendar } from "lucide-react";
+import { useMemo, useState } from "react";
+import { ArrowLeft, Calendar, Send } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
 import { Loader } from "@/components/ui/Loader";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { VitalsChart, type ChartPoint } from "@/components/dashboard/VitalsChart";
 import { usePatientDetail } from "@/hooks/useDoctor";
+import { useDoctorMessages, useSendDoctorMessage } from "@/hooks/useMessages";
 import { formatDateTime } from "@/lib/format";
+import { cn } from "@/lib/cn";
 import type { VitalRecord } from "@/lib/api";
 
 type Metric = "heart_rate" | "blood_pressure_systolic" | "oxygen_saturation" | "temperature";
+
+function DirectMessageThread({ patientId }: { patientId: string }) {
+  const { data, isLoading } = useDoctorMessages(patientId);
+  const sendMutation = useSendDoctorMessage();
+  const [body, setBody] = useState("");
+
+  const messages = data?.items ?? [];
+
+  async function handleSend() {
+    const text = body.trim();
+    if (!text) return;
+    await sendMutation.mutateAsync({ patientId, body: text });
+    setBody("");
+  }
+
+  if (isLoading) return <Loader label="Loading messages…" />;
+
+  return (
+    <div className="space-y-4">
+      {/* Message thread */}
+      <div className="max-h-72 overflow-y-auto space-y-2 pr-1">
+        {messages.length === 0 ? (
+          <p className="text-sm text-ink-subtle italic">No messages yet. Send the first one below.</p>
+        ) : (
+          messages.map((m) => {
+            const isDoctor = m.sender_role === "doctor";
+            return (
+              <div key={m.id} className={cn("flex", isDoctor ? "justify-end" : "justify-start")}>
+                <div
+                  className={cn(
+                    "max-w-[75%] rounded-xl px-3 py-2 text-sm",
+                    isDoctor
+                      ? "bg-brand-500 text-white rounded-tr-sm"
+                      : "bg-bg-subtle text-ink rounded-tl-sm",
+                  )}
+                >
+                  <p>{m.body}</p>
+                  <p className={cn("text-[10px] mt-0.5", isDoctor ? "text-brand-100" : "text-ink-subtle")}>
+                    {new Date(m.created_at).toLocaleString([], {
+                      month: "short",
+                      day: "numeric",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                    {!isDoctor && !m.is_read && (
+                      <span className="ml-1 text-warning-600 font-semibold">• unread</span>
+                    )}
+                  </p>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {/* Compose */}
+      <div className="flex gap-2 pt-2 border-t border-border">
+        <textarea
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+          placeholder="Type a message to this patient…"
+          rows={2}
+          className={cn(
+            "flex-1 px-3 py-2 rounded-lg border border-border bg-bg",
+            "text-sm text-ink placeholder:text-ink-subtle resize-none",
+            "outline-none focus:border-brand-500 focus:shadow-focus transition-shadow",
+          )}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleSend();
+          }}
+        />
+        <Button
+          onClick={handleSend}
+          disabled={!body.trim() || sendMutation.isPending}
+          loading={sendMutation.isPending}
+          className="self-end"
+        >
+          <Send className="size-4" />
+          Send
+        </Button>
+      </div>
+      <p className="text-[10px] text-ink-subtle">⌘ Enter to send</p>
+    </div>
+  );
+}
 
 function buildSeries(records: VitalRecord[], metric: Metric): ChartPoint[] {
   return [...records]
@@ -60,6 +148,18 @@ export default function PatientDetailPage() {
 
   const { data, isLoading } = usePatientDetail(patientId, 30, 20);
 
+  const vitals = data?.vitals ?? [];
+
+  const series = useMemo(
+    () => ({
+      hr: buildSeries(vitals, "heart_rate"),
+      bp: buildSeries(vitals, "blood_pressure_systolic"),
+      spo2: buildSeries(vitals, "oxygen_saturation"),
+      temp: buildSeries(vitals, "temperature"),
+    }),
+    [vitals],
+  );
+
   if (isLoading) {
     return (
       <div className="py-24">
@@ -80,20 +180,9 @@ export default function PatientDetailPage() {
   }
 
   const patient = data.patient;
-  const vitals = data.vitals ?? [];
   const chatHistory = data.chat_history ?? [];
   const summary = data.summary ?? {};
   const latestVital = vitals[0];
-
-  const series = useMemo(
-    () => ({
-      hr: buildSeries(vitals, "heart_rate"),
-      bp: buildSeries(vitals, "blood_pressure_systolic"),
-      spo2: buildSeries(vitals, "oxygen_saturation"),
-      temp: buildSeries(vitals, "temperature"),
-    }),
-    [vitals],
-  );
 
   return (
     <div className="container py-8 max-w-5xl">
@@ -372,6 +461,16 @@ export default function PatientDetailPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Direct Messages */}
+      <Card className="mt-6">
+        <CardHeader>
+          <CardTitle>Direct Messages</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <DirectMessageThread patientId={patient.id} />
+        </CardContent>
+      </Card>
     </div>
   );
 }

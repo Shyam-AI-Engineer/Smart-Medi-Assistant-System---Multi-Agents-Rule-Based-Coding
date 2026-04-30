@@ -4,7 +4,7 @@ import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { cn } from "@/lib/cn";
 
-type Trend = "improving" | "worsening" | "stable" | "none";
+export type Trend = "improving" | "worsening" | "stable" | "none";
 
 interface MetricCardProps {
   label: string;

@@ -7,7 +7,6 @@ const baseURL =
 export const api: AxiosInstance = axios.create({
   baseURL,
   timeout: 30_000,
-  headers: { "Content-Type": "application/json" },
 });
 
 api.interceptors.request.use((config) => {
@@ -15,6 +14,13 @@ api.interceptors.request.use((config) => {
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+
+  // Only set Content-Type for non-FormData requests
+  // FormData needs multipart/form-data, which axios sets automatically
+  if (!(config.data instanceof FormData) && !config.headers["Content-Type"]) {
+    config.headers["Content-Type"] = "application/json";
+  }
+
   return config;
 });
 
@@ -312,6 +318,87 @@ export async function transcribeAudio(audioBlob: Blob): Promise<TranscribeRespon
   return response.data;
 }
 
+export interface TriageResponse {
+  urgency_level: "critical" | "urgent" | "moderate" | "self-care" | string;
+  severity_score: number;
+  requires_escalation: boolean;
+  escalation_path: string;
+  immediate_action: string;
+  reasoning: string;
+  warning_signs: string[];
+  next_steps: string[];
+  confidence_score: number;
+  agent_used: string;
+  response: string;
+  disclaimer: string;
+  error?: string | null;
+}
+
+export interface MedicationItem {
+  id: string;
+  medication_name: string;
+  dosage: string;
+  frequency: string;
+  start_date: string;
+  end_date: string | null;
+  notes: string | null;
+  created_at: string;
+}
+
+export interface MedicationPayload {
+  medication_name: string;
+  dosage: string;
+  frequency: string;
+  start_date: string;
+  end_date?: string | null;
+  notes?: string | null;
+}
+
+export interface InteractionResult {
+  risk_level: string;
+  interactions: unknown[];
+  contraindications: string[];
+  warning_signs: string[];
+  patient_response: string;
+  disclaimer: string;
+  confidence_score: number;
+}
+
+export interface ReportItem {
+  id: string;
+  filename: string;
+  file_type: string;
+  status: "processing" | "done" | "error";
+  text_preview: string | null;
+  page_count: number | null;
+  error_message: string | null;
+  created_at: string;
+}
+
+export interface DoctorMessage {
+  id: string;
+  patient_id: string;
+  doctor_user_id: string;
+  doctor_name: string;
+  body: string;
+  sender_role: "doctor" | "patient";
+  is_read: boolean;
+  created_at: string;
+}
+
+export interface MessageListResponse {
+  items: DoctorMessage[];
+  total: number;
+  unread_count: number;
+}
+
+export async function uploadReport(file: File): Promise<ReportItem> {
+  const form = new FormData();
+  form.append("file", file);
+  const response = await api.post<ReportItem>("/reports/upload", form);
+  return response.data;
+}
+
 export const endpoints = {
   // Auth
   login: (payload: LoginPayload) =>
@@ -354,4 +441,38 @@ export const endpoints = {
         params: { vitals_limit: vitalsLimit, chat_limit: chatLimit },
       })
       .then((r) => r.data),
+
+  // Reports
+  listReports: () =>
+    api.get<{ items: ReportItem[]; total: number }>("/reports/").then((r) => r.data),
+  deleteReport: (reportId: string) =>
+    api.delete(`/reports/${reportId}`).then((r) => r.data),
+
+  // Triage
+  assessSymptoms: (symptoms: string) =>
+    api.post<TriageResponse>("/triage/assess", { symptoms }).then((r) => r.data),
+
+  // Medications
+  listMedications: () =>
+    api.get<{ items: MedicationItem[]; total: number }>("/medications/").then((r) => r.data),
+  addMedication: (payload: MedicationPayload) =>
+    api.post<MedicationItem>("/medications/", payload).then((r) => r.data),
+  deleteMedication: (medicationId: string) =>
+    api.delete(`/medications/${medicationId}`).then((r) => r.data),
+  checkInteractions: () =>
+    api.get<InteractionResult>("/medications/interactions").then((r) => r.data),
+
+  // Patient messaging (inbox)
+  getMessages: () =>
+    api.get<MessageListResponse>("/messages/").then((r) => r.data),
+  markMessageRead: (id: string) =>
+    api.patch(`/messages/${id}/read`).then((r) => r.data),
+  replyToDoctor: (doctorUserId: string, body: string) =>
+    api.post<DoctorMessage>("/messages/reply", { doctor_user_id: doctorUserId, body }).then((r) => r.data),
+
+  // Doctor messaging
+  sendDoctorMessage: (patientId: string, body: string) =>
+    api.post<DoctorMessage>(`/doctor/patients/${patientId}/messages`, { body }).then((r) => r.data),
+  getDoctorMessages: (patientId: string) =>
+    api.get<MessageListResponse>(`/doctor/patients/${patientId}/messages`).then((r) => r.data),
 };

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Smart Medi Assistant System - Overview
 
-A multi-agent AI medical assistant platform that helps patients get medical guidance, monitor vitals, and manage care plans. Built by a beginner developer with progressive, step-by-step implementation.
+A multi-agent AI medical assistant platform that helps patients get medical guidance, monitor vitals, and manage care plans. Built by an intermediate developer with progressive, step-by-step implementation.
 
 ### Tech Stack
 - **Backend**: FastAPI (Python 3.11+)
@@ -43,8 +43,7 @@ deactivate
 
 ---
 
-## Project Structure (Beginner Version)
-
+## Project Structure 
 ```
 smart-medi-assistant/
 ├── backend/
@@ -161,7 +160,7 @@ smart-medi-assistant/
 
 ---
 
-## Development Workflow (Beginner Steps)
+## Development Workflow 
 
 ### Step 1: Install Dependencies
 ```bash

@@ -33,7 +33,7 @@ export function RealtimeVitalsWidget({ patientId }: { patientId: string }) {
     return (
       <Button
         onClick={() => setShowWidget(true)}
-        variant="outline"
+        variant="secondary"
         className="mb-4"
       >
         Open Real-time Monitor
