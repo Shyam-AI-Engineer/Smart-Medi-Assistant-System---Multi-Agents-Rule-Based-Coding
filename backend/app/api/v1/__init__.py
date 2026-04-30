@@ -7,6 +7,10 @@ from .patients import router as patients_router
 from .vitals import router as vitals_router
 from .doctor import router as doctor_router
 from .voice import router as voice_router
+from .reports import router as reports_router
+from .medications import router as medications_router
+from .triage import router as triage_router
+from .messages import router as messages_router
 
 api_router = APIRouter(prefix="/api/v1")
 api_router.include_router(auth_router)
@@ -15,5 +19,9 @@ api_router.include_router(vitals_router)
 api_router.include_router(chat_router)
 api_router.include_router(doctor_router)
 api_router.include_router(voice_router)
+api_router.include_router(reports_router)
+api_router.include_router(medications_router)
+api_router.include_router(triage_router)
+api_router.include_router(messages_router)
 
 __all__ = ["api_router"]

@@ -1,8 +1,10 @@
 """Doctor dashboard API endpoints.
 
 Routes:
-  GET /api/v1/doctor/patients           – list all patients (paginated)
-  GET /api/v1/doctor/patients/{id}      – patient detail + vitals + chat history
+  GET  /api/v1/doctor/patients                      – list all patients (paginated)
+  GET  /api/v1/doctor/patients/{id}                 – patient detail + vitals + chat history
+  POST /api/v1/doctor/patients/{id}/messages        – send message to patient
+  GET  /api/v1/doctor/patients/{id}/messages        – get thread with patient
 """
 import logging
 from typing import List, Optional, Dict, Any
@@ -12,8 +14,10 @@ from sqlalchemy.orm import Session
 from app.middleware.auth_middleware import require_role
 from app.extensions import get_db
 from app.models import Patient, User, Vitals, ChatHistory
+from app.models.doctor_message import DoctorMessage
 from app.schemas.patient_schema import PatientProfileResponse, VitalsResponse
 from app.schemas.chat_schema import ChatResponse
+from app.schemas.message_schema import SendMessageRequest
 
 logger = logging.getLogger(__name__)
 
@@ -316,3 +320,88 @@ def get_patient_detail(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to retrieve patient details",
         )
+
+
+def _msg_dict(m: DoctorMessage, doctor_name: str) -> Dict[str, Any]:
+    return {
+        "id": m.id,
+        "patient_id": m.patient_id,
+        "doctor_user_id": m.doctor_user_id,
+        "doctor_name": doctor_name,
+        "body": m.body,
+        "sender_role": m.sender_role,
+        "is_read": m.is_read,
+        "created_at": m.created_at.isoformat(),
+    }
+
+
+@router.post(
+    "/patients/{patient_id}/messages",
+    status_code=status.HTTP_201_CREATED,
+    summary="Send a message to a patient",
+)
+def send_message_to_patient(
+    patient_id: str,
+    request_body: SendMessageRequest,
+    current_user: dict = Depends(require_role("doctor", "admin")),
+    db: Session = Depends(get_db),
+) -> Dict[str, Any]:
+    """Doctor sends a direct message to a patient."""
+    patient = db.query(Patient).filter(Patient.id == patient_id).first()
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found")
+
+    doctor = db.query(User).filter(User.id == current_user["user_id"]).first()
+    doctor_name = doctor.full_name if doctor else "Doctor"
+
+    msg = DoctorMessage(
+        patient_id=patient_id,
+        doctor_user_id=current_user["user_id"],
+        body=request_body.body,
+        sender_role="doctor",
+        is_read=False,
+    )
+    db.add(msg)
+    db.commit()
+    db.refresh(msg)
+
+    logger.info(f"Doctor {current_user['user_id']} sent message to patient {patient_id}")
+    return _msg_dict(msg, doctor_name)
+
+
+@router.get(
+    "/patients/{patient_id}/messages",
+    summary="Get message thread with a patient",
+)
+def get_patient_thread(
+    patient_id: str,
+    current_user: dict = Depends(require_role("doctor", "admin")),
+    db: Session = Depends(get_db),
+) -> Dict[str, Any]:
+    """Retrieve the full message thread between this doctor and a patient.
+    Also marks any patient replies as read."""
+    patient = db.query(Patient).filter(Patient.id == patient_id).first()
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found")
+
+    doctor = db.query(User).filter(User.id == current_user["user_id"]).first()
+    doctor_name = doctor.full_name if doctor else "Doctor"
+
+    messages = (
+        db.query(DoctorMessage)
+        .filter(
+            DoctorMessage.patient_id == patient_id,
+            DoctorMessage.doctor_user_id == current_user["user_id"],
+        )
+        .order_by(DoctorMessage.created_at.asc())
+        .all()
+    )
+
+    # Doctor opening the thread marks patient replies as read
+    for m in messages:
+        if m.sender_role == "patient" and not m.is_read:
+            m.is_read = True
+    db.commit()
+
+    items = [_msg_dict(m, doctor_name) for m in messages]
+    return {"items": items, "total": len(items), "unread_count": 0}
