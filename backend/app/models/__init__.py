@@ -4,6 +4,9 @@ from .user import User, UserRole
 from .patient import Patient
 from .vitals import Vitals
 from .chat_history import ChatHistory
+from .medical_report import MedicalReport, ReportStatus
+from .medication import Medication
+from .doctor_message import DoctorMessage
 
 __all__ = [
     "BaseModel",
@@ -12,4 +15,8 @@ __all__ = [
     "Patient",
     "Vitals",
     "ChatHistory",
+    "MedicalReport",
+    "ReportStatus",
+    "Medication",
+    "DoctorMessage",
 ]
