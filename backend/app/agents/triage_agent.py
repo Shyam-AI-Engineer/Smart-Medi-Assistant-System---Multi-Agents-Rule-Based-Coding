@@ -50,7 +50,7 @@ class TriageAgent:
                 "severity_score": 8,  # 1-10
                 "requires_escalation": True,
                 "escalation_path": "ER" or "Urgent Care" or "Doctor Visit" or "Self-Care",
-                "immediate_action": "Call 911 or go to nearest emergency room immediately",
+                "immediate_action": "Call 108 or go to nearest emergency room immediately",
                 "reasoning": "Chest pain with shortness of breath indicates cardiac risk",
                 "warning_signs": ["Severe chest pain", "Difficulty breathing"],
                 "next_steps": ["Seek immediate medical attention", "Do not drive yourself"],
@@ -105,11 +105,12 @@ class TriageAgent:
                 "next_steps": triage_result.get("next_steps", []),
                 "confidence_score": triage_result.get("confidence_score", 0.9),
                 "agent_used": self.agent_name,
+                "emergency_number": "108",
                 "response": response_text,
                 "disclaimer": (
                     "⚠️  IMPORTANT DISCLAIMER: This assessment is not a medical diagnosis. "
                     "If you experience chest pain, difficulty breathing, loss of consciousness, "
-                    "or severe symptoms, seek immediate medical attention by calling 911 or "
+                    "or severe symptoms, seek immediate medical attention by calling 108 or "
                     "going to the nearest emergency room."
                 ),
             }
@@ -129,10 +130,11 @@ class TriageAgent:
                 "response": (
                     "I was unable to process your message completely. "
                     "For your safety, please seek medical attention from a healthcare provider. "
-                    "Call 911 if you experience chest pain, difficulty breathing, or other severe symptoms."
+                    "Call 108 if you experience chest pain, difficulty breathing, or other severe symptoms."
                 ),
                 "confidence_score": 0.0,
                 "agent_used": self.agent_name,
+                "emergency_number": "108",
                 "error": str(e),
                 "disclaimer": (
                     "⚠️  IMPORTANT DISCLAIMER: This assessment is not a medical diagnosis. "

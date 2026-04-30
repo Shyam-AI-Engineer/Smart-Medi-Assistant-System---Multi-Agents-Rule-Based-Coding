@@ -336,12 +336,12 @@ class MonitoringAgent(BaseAgent):
         """Get recommendation for abnormal vital sign."""
         recommendations = {
             "CRITICAL": {
-                "heart_rate": "SEEK IMMEDIATE MEDICAL ATTENTION - call 911",
-                "blood_pressure_systolic": "SEEK IMMEDIATE MEDICAL ATTENTION - call 911",
-                "blood_pressure_diastolic": "SEEK IMMEDIATE MEDICAL ATTENTION - call 911",
-                "oxygen_saturation": "SEEK IMMEDIATE MEDICAL ATTENTION - call 911",
+                "heart_rate": "SEEK IMMEDIATE MEDICAL ATTENTION - call 108",
+                "blood_pressure_systolic": "SEEK IMMEDIATE MEDICAL ATTENTION - call 108",
+                "blood_pressure_diastolic": "SEEK IMMEDIATE MEDICAL ATTENTION - call 108",
+                "oxygen_saturation": "SEEK IMMEDIATE MEDICAL ATTENTION - call 108",
                 "temperature": "SEEK IMMEDIATE MEDICAL ATTENTION if accompanied by severe symptoms",
-                "respiratory_rate": "SEEK IMMEDIATE MEDICAL ATTENTION - call 911",
+                "respiratory_rate": "SEEK IMMEDIATE MEDICAL ATTENTION - call 108",
             },
             "HIGH": {
                 "heart_rate": "Contact doctor immediately - avoid strenuous activity",
@@ -415,7 +415,7 @@ class MonitoringAgent(BaseAgent):
 
         # Add severity-based recommendations
         if overall_status == "CRITICAL":
-            recommendations.append("Seek immediate medical attention or call 911")
+            recommendations.append("Seek immediate medical attention or call 108")
         elif overall_status == "HIGH":
             recommendations.append("Contact healthcare provider immediately")
         elif overall_status == "MODERATE":

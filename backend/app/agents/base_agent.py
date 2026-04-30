@@ -48,7 +48,7 @@ class BaseAgent(ABC):
         base = "⚠️ **DISCLAIMER**: This is not a substitute for professional medical advice."
 
         if severity == "CRITICAL":
-            return f"{base}\n**Seek immediate medical attention or call emergency services (911).**"
+            return f"{base}\n**Seek immediate medical attention or call emergency services (108).**"
         elif severity == "HIGH":
             return f"{base}\nConsult a doctor or healthcare provider immediately."
         elif severity == "MODERATE":
