@@ -395,7 +395,7 @@ def send_message_stream(
                     yield f"data: {json.dumps({'type': 'token', 'content': chunk})}\n\n"
 
                 service._save_chat_history(patient.id, message, agent_response)
-                yield f"data: {json.dumps({'type': 'done', 'agent_used': agent_response.get('agent_used'), 'confidence_score': agent_response.get('confidence_score', 0.5), 'sources': agent_response.get('sources', [])})}\n\n"
+                yield f"data: {json.dumps({'type': 'done', 'agent_used': agent_response.get('agent_used'), 'confidence_score': agent_response.get('confidence_score', 0.5), 'sources': agent_response.get('sources', []), 'requires_escalation': bool(agent_response.get('requires_escalation', False)), 'urgency_level': agent_response.get('urgency_level'), 'immediate_action': agent_response.get('immediate_action'), 'emergency_number': agent_response.get('emergency_number')})}\n\n"
 
         except Exception as e:
             logger.error(f"Streaming error: {e}", exc_info=True)

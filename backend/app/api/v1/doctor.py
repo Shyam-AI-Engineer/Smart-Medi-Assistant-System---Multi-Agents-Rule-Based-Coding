@@ -9,12 +9,14 @@ Routes:
 import logging
 from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.middleware.auth_middleware import require_role
 from app.extensions import get_db
 from app.models import Patient, User, Vitals, ChatHistory
 from app.models.doctor_message import DoctorMessage
+from app.models.appointment import Appointment
 from app.schemas.patient_schema import PatientProfileResponse, VitalsResponse
 from app.schemas.chat_schema import ChatResponse
 from app.schemas.message_schema import SendMessageRequest
@@ -405,3 +407,163 @@ def get_patient_thread(
 
     items = [_msg_dict(m, doctor_name) for m in messages]
     return {"items": items, "total": len(items), "unread_count": 0}
+
+
+# ── Export endpoint ──────────────────────────────────────────────────────────
+
+@router.get(
+    "/patients/{patient_id}/export",
+    status_code=status.HTTP_200_OK,
+    summary="Export patient summary as PDF",
+    description="Download a comprehensive patient summary PDF (doctor view)",
+)
+def export_patient_summary_pdf(
+    patient_id: str,
+    current_user: dict = Depends(require_role("doctor", "admin")),
+    db: Session = Depends(get_db),
+) -> StreamingResponse:
+    """Generate and download a full patient summary PDF for doctor use."""
+    from app.models.vitals import Vitals
+    from app.utils.pdf_generator import generate_doctor_patient_summary_pdf
+
+    patient = db.query(Patient).filter_by(id=patient_id).first()
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found")
+
+    user = db.query(User).filter_by(id=patient.user_id).first()
+    doctor_user = db.query(User).filter_by(id=current_user["user_id"]).first()
+
+    patient_name = (user.full_name if user else None) or "Unknown"
+    patient_email = (user.email if user else None) or ""
+    doctor_name = (doctor_user.full_name if doctor_user else None) or "Doctor"
+
+    vitals_qs = (
+        db.query(Vitals)
+        .filter_by(patient_id=patient_id)
+        .order_by(Vitals.created_at.desc())
+        .limit(100)
+        .all()
+    )
+    vitals_data = [
+        {
+            "heart_rate": v.heart_rate,
+            "blood_pressure_systolic": v.blood_pressure_systolic,
+            "blood_pressure_diastolic": v.blood_pressure_diastolic,
+            "temperature": v.temperature,
+            "oxygen_saturation": v.oxygen_saturation,
+            "weight": v.weight,
+            "respiratory_rate": getattr(v, "respiratory_rate", None),
+            "anomaly_detected": v.anomaly_detected,
+            "created_at": v.created_at.isoformat() if v.created_at else "",
+        }
+        for v in vitals_qs
+    ]
+
+    # Compute summary inline
+    latest_vital = vitals_qs[0] if vitals_qs else None
+    latest_status = "UNKNOWN"
+    risk_level = "UNKNOWN"
+    if latest_vital:
+        latest_status = "HIGH" if latest_vital.anomaly_detected else "NORMAL"
+        risk_level = "HIGH" if latest_vital.anomaly_detected else "LOW"
+
+    summary = {
+        "latest_status": latest_status,
+        "risk_level": risk_level,
+        "total_messages": db.query(ChatHistory).filter_by(patient_id=patient_id).count(),
+        "latest_vital_at": vitals_qs[0].created_at.isoformat() if vitals_qs else None,
+    }
+
+    dob = patient.date_of_birth.isoformat() if patient.date_of_birth else None
+    pdf_buf = generate_doctor_patient_summary_pdf(
+        patient_name=patient_name,
+        patient_email=patient_email,
+        date_of_birth=dob,
+        allergies=patient.allergies,
+        current_medications=patient.current_medications,
+        medical_history=patient.medical_history,
+        emergency_contact=patient.emergency_contact,
+        vitals=vitals_data,
+        summary=summary,
+        doctor_name=doctor_name,
+    )
+
+    filename = f"patient_summary_{patient_name.replace(' ', '_')}.pdf"
+    return StreamingResponse(
+        pdf_buf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+# ── Appointment endpoints (doctor side) ──────────────────────────────────────
+
+def _appt_dict(a: Appointment, patient_name: str) -> Dict[str, Any]:
+    return {
+        "id": a.id,
+        "patient_id": a.patient_id,
+        "patient_name": patient_name,
+        "doctor_user_id": a.doctor_user_id,
+        "reason": a.reason,
+        "preferred_date": a.preferred_date,
+        "preferred_time_slot": a.preferred_time_slot,
+        "status": a.status,
+        "doctor_notes": a.doctor_notes,
+        "scheduled_at": a.scheduled_at,
+        "ai_suggested": a.ai_suggested,
+        "created_at": a.created_at.isoformat(),
+    }
+
+
+@router.get("/appointments", summary="List all patient appointment requests")
+def list_doctor_appointments(
+    status_filter: str | None = None,
+    _current_user: dict = Depends(require_role("doctor", "admin")),
+    db: Session = Depends(get_db),
+) -> Dict[str, Any]:
+    """Return all appointments across all patients, optionally filtered by status."""
+    query = db.query(Appointment).order_by(Appointment.created_at.desc())
+    if status_filter:
+        query = query.filter(Appointment.status == status_filter)
+    appts = query.all()
+
+    patient_ids = {a.patient_id for a in appts}
+    patient_names: Dict[str, str] = {}
+    for p in db.query(Patient).filter(Patient.id.in_(patient_ids)).all():
+        patient_names[p.id] = (p.user.full_name if p.user else "Unknown")
+
+    items = [_appt_dict(a, patient_names.get(a.patient_id, "Unknown")) for a in appts]
+    return {"items": items, "total": len(items)}
+
+
+@router.put("/appointments/{appointment_id}", summary="Update appointment status / schedule")
+def update_appointment(
+    appointment_id: str,
+    body: Dict[str, Any],
+    _current_user: dict = Depends(require_role("doctor", "admin")),
+    db: Session = Depends(get_db),
+) -> Dict[str, Any]:
+    """Doctor confirms, reschedules, or cancels an appointment request."""
+    appt = db.query(Appointment).filter_by(id=appointment_id).first()
+    if not appt:
+        raise HTTPException(status_code=404, detail="Appointment not found")
+
+    allowed_statuses = {"confirmed", "cancelled", "completed", "pending"}
+    if "status" in body and body["status"] not in allowed_statuses:
+        raise HTTPException(status_code=400, detail=f"Invalid status: {body['status']}")
+
+    if "status" in body:
+        appt.status = body["status"]
+    if "doctor_notes" in body:
+        appt.doctor_notes = body["doctor_notes"]
+    if "scheduled_at" in body:
+        appt.scheduled_at = body["scheduled_at"]
+    if "doctor_user_id" in body:
+        appt.doctor_user_id = body["doctor_user_id"]
+
+    db.commit()
+    db.refresh(appt)
+
+    patient = db.query(Patient).filter_by(id=appt.patient_id).first()
+    patient_name = patient.user.full_name if patient and patient.user else "Unknown"
+    return _appt_dict(appt, patient_name)
