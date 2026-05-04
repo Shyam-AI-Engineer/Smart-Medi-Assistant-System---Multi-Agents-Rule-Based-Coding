@@ -85,7 +85,7 @@ function AppointmentCard({
 
       {appt.doctor_notes && (
         <div className="px-3 py-2 rounded-lg bg-bg-subtle border border-border text-xs text-ink">
-          <span className="font-semibold text-ink-muted">Doctor's note:</span> {appt.doctor_notes}
+          <span className="font-semibold text-ink-muted">Doctor&rsquo;s note:</span> {appt.doctor_notes}
         </div>
       )}
 
