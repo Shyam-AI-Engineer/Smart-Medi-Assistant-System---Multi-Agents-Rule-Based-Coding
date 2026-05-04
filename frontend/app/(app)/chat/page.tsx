@@ -86,6 +86,11 @@ export default function ChatPage() {
         );
       },
       (meta) => {
+        const needsEscalation =
+          meta.requires_escalation ||
+          meta.urgency_level === "critical" ||
+          meta.urgency_level === "urgent";
+
         setMessages((m) =>
           m.map((msg) =>
             msg.id === assistantId
@@ -95,6 +100,14 @@ export default function ChatPage() {
                   agent: meta.agent_used,
                   confidence_score: meta.confidence_score,
                   sources: meta.sources,
+                  escalation: needsEscalation
+                    ? {
+                        urgency_level: meta.urgency_level!,
+                        immediate_action: meta.immediate_action,
+                        emergency_contact: profile?.emergency_contact,
+                        emergency_number: meta.emergency_number,
+                      }
+                    : null,
                 }
               : msg,
           ),

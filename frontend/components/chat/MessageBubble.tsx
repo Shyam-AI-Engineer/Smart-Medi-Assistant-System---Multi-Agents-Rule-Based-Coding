@@ -1,10 +1,23 @@
 "use client";
 
+import Link from "next/link";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Stethoscope, User, ThumbsUp, ThumbsDown } from "lucide-react";
+import { Stethoscope, User, ThumbsUp, ThumbsDown, CalendarPlus } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Badge } from "@/components/ui/Badge";
+import { EscalationCard, type EscalationData } from "./EscalationCard";
+
+const SCHEDULE_KEYWORDS = [
+  "schedule", "appointment", "check-up", "checkup", "follow-up", "followup",
+  "see a doctor", "visit your doctor", "consult a doctor", "book a",
+  "make an appointment", "see your physician",
+];
+
+function suggestsScheduling(text: string): boolean {
+  const lower = text.toLowerCase();
+  return SCHEDULE_KEYWORDS.some((kw) => lower.includes(kw));
+}
 
 export interface ChatBubbleMessage {
   id: string;
@@ -16,6 +29,7 @@ export interface ChatBubbleMessage {
   feedback?: "thumbs_up" | "thumbs_down" | null;
   error?: boolean;
   isStreaming?: boolean;
+  escalation?: EscalationData | null;
   onFeedback?: (id: string, value: "thumbs_up" | "thumbs_down") => void;
 }
 
@@ -94,6 +108,20 @@ export function MessageBubble({ message }: { message: ChatBubbleMessage }) {
             </div>
           )}
         </div>
+
+        {!isUser && message.escalation && !message.isStreaming && (
+          <EscalationCard {...message.escalation} />
+        )}
+
+        {!isUser && !message.isStreaming && !message.escalation && suggestsScheduling(message.content) && (
+          <Link
+            href="/appointments"
+            className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-brand-200 bg-brand-50 text-brand-700 text-xs font-medium hover:bg-brand-100 transition-colors"
+          >
+            <CalendarPlus className="size-3.5" />
+            Request an appointment
+          </Link>
+        )}
 
         {!isUser && !message.isStreaming && (message.agent || message.sources?.length || message.confidence_score !== undefined || message.onFeedback) && (
           <div className="mt-2 flex flex-wrap items-center gap-1.5">

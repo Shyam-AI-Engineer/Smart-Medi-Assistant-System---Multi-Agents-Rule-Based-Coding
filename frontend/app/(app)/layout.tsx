@@ -5,10 +5,15 @@ import { useRouter } from "next/navigation";
 import { Sidebar, MobileTopbar } from "@/components/layout/Sidebar";
 import { useAuth } from "@/hooks/useAuth";
 import { FullPageLoader } from "@/components/ui/Loader";
+import { useOnboarding } from "@/hooks/useOnboarding";
+import { useMyPatientProfile } from "@/hooks/useVitals";
+import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { user, hydrated } = useAuth();
+  const { showWizard, completeWizard } = useOnboarding();
+  const { data: profile } = useMyPatientProfile();
 
   useEffect(() => {
     if (!hydrated) return;
@@ -16,8 +21,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       router.replace("/login");
       return;
     }
-    if (user.role === "doctor" || user.role === "admin") {
+    if (user.role === "doctor") {
       router.replace("/doctor/dashboard");
+      return;
+    }
+    if (user.role === "admin") {
+      router.replace("/admin/dashboard");
     }
   }, [hydrated, user, router]);
 
@@ -31,6 +40,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         <MobileTopbar />
         <main className="flex-1 min-w-0">{children}</main>
       </div>
+      {showWizard && (
+        <OnboardingWizard profile={profile ?? null} onComplete={completeWizard} />
+      )}
     </div>
   );
 }

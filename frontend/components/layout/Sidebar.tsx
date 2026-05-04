@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, MessagesSquare, HeartPulse, FileText, Pill, LogOut, Settings, Stethoscope, Inbox } from "lucide-react";
+import { LayoutDashboard, MessagesSquare, HeartPulse, FileText, Pill, LogOut, Settings, Stethoscope, Inbox, CalendarCheck } from "lucide-react";
 import { Logo } from "@/components/ui/Logo";
 import { useAuth } from "@/hooks/useAuth";
 import { useMessages } from "@/hooks/useMessages";
@@ -16,6 +16,7 @@ const nav = [
   { href: "/triage", label: "Symptom Checker", icon: Stethoscope },
   { href: "/chat", label: "AI Chat", icon: MessagesSquare },
   { href: "/messages", label: "Messages", icon: Inbox },
+  { href: "/appointments", label: "Appointments", icon: CalendarCheck },
   { href: "/profile", label: "Profile", icon: Settings },
 ];
 

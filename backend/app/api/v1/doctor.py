@@ -5,6 +5,7 @@ Routes:
   GET  /api/v1/doctor/patients/{id}                 – patient detail + vitals + chat history
   POST /api/v1/doctor/patients/{id}/messages        – send message to patient
   GET  /api/v1/doctor/patients/{id}/messages        – get thread with patient
+  GET  /api/v1/doctor/messages/unread-count         – unread message count by patient
 """
 import logging
 from typing import List, Optional, Dict, Any
@@ -421,6 +422,69 @@ def get_patient_thread(
 
     items = [_msg_dict(m, doctor_name) for m in messages]
     return {"items": items, "total": len(items), "unread_count": 0}
+
+
+# ── Unread message count ─────────────────────────────────────────────────────
+
+@router.get(
+    "/messages/unread-count",
+    status_code=status.HTTP_200_OK,
+    summary="Get unread message count",
+    description="Get total unread messages and breakdown by patient",
+)
+def get_unread_message_count(
+    current_user: dict = Depends(require_role("doctor", "admin")),
+    db: Session = Depends(get_db),
+) -> Dict[str, Any]:
+    """
+    Get unread message count for doctor from patients.
+
+    Returns:
+        {
+            "total_unread": 5,
+            "by_patient": [
+                {
+                    "patient_id": "...",
+                    "patient_name": "John Doe",
+                    "count": 3
+                },
+                {
+                    "patient_id": "...",
+                    "patient_name": "Jane Smith",
+                    "count": 2
+                }
+            ]
+        }
+    """
+    from sqlalchemy import func
+
+    # Get unread messages from patients
+    unread_query = db.query(
+        DoctorMessage.patient_id,
+        func.count(DoctorMessage.id).label("count"),
+    ).filter(
+        DoctorMessage.doctor_user_id == current_user["user_id"],
+        DoctorMessage.sender_role == "patient",
+        DoctorMessage.is_read == False,  # noqa: E712
+    ).group_by(DoctorMessage.patient_id).all()
+
+    total_unread = sum(r.count for r in unread_query)
+
+    # Get patient names for each
+    by_patient = []
+    for row in unread_query:
+        patient = db.query(Patient).filter(Patient.id == row.patient_id).first()
+        if patient and patient.user:
+            by_patient.append({
+                "patient_id": row.patient_id,
+                "patient_name": patient.user.full_name,
+                "count": row.count,
+            })
+
+    return {
+        "total_unread": total_unread,
+        "by_patient": by_patient,
+    }
 
 
 # ── Export endpoint ──────────────────────────────────────────────────────────

@@ -7,18 +7,21 @@ Routes:
   GET /api/v1/admin/analytics/anomalies  – anomaly detection trend
   GET /api/v1/admin/audit-logs           – paginated PHI access trail (compliance)
   GET /api/v1/admin/audit-logs/summary   – counts by action + outcome (last 30 days)
+  GET /api/v1/admin/users                – paginated user list (filterable)
+  GET /api/v1/admin/users/{user_id}      – single user detail
+  PUT /api/v1/admin/users/{user_id}      – update user (role, is_active)
 """
 import logging
 from datetime import datetime, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, Query, Request, HTTPException
 from sqlalchemy import func, case, or_
 from sqlalchemy.orm import Session
 
 from app.extensions import get_db
 from app.middleware.auth_middleware import require_role
-from app.models import ChatHistory, Vitals, Patient
+from app.models import ChatHistory, Vitals, Patient, User
 from app.models.audit_log import AuditLog
 from app.utils.audit import write_audit, get_client_ip
 
@@ -319,4 +322,174 @@ def audit_logs_summary(
         "unique_users": unique_users,
         "breakdown": sorted(breakdown.values(), key=lambda x: -x["total"]),
         "days": days,
+    }
+
+
+# ── User management endpoints ─────────────────────────────────────────────────
+
+@router.get("/users")
+def list_users(
+    request: Request,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    search: Optional[str] = Query(default=None, description="Filter by email or name substring"),
+    role: Optional[str] = Query(default=None, description="Filter by role: patient, doctor, admin"),
+    current_user: dict = Depends(require_role("admin")),
+    db: Session = Depends(get_db),
+):
+    """
+    Paginated list of all users (patients, doctors, admins).
+
+    Supports filtering by:
+    - search: email or full_name substring match
+    - role: PATIENT, DOCTOR, or ADMIN
+    """
+    query = db.query(User)
+
+    if search:
+        query = query.filter(
+            or_(
+                User.email.ilike(f"%{search}%"),
+                User.full_name.ilike(f"%{search}%"),
+            )
+        )
+
+    if role:
+        query = query.filter(User.role == role)
+
+    total = query.count()
+    users = (
+        query
+        .order_by(User.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+
+    # Log the admin viewed user list
+    write_audit(
+        db,
+        user_id=current_user["user_id"],
+        user_email=current_user["email"],
+        user_role=current_user["role"],
+        action="view_user_list",
+        resource_type="admin",
+        ip_address=get_client_ip(request),
+        details=f"limit={limit} offset={offset} search={search} role={role}",
+    )
+
+    return {
+        "items": [
+            {
+                "id": u.id,
+                "email": u.email,
+                "full_name": u.full_name,
+                "role": u.role.value,
+                "is_active": u.is_active,
+                "created_at": u.created_at.isoformat(),
+                "updated_at": u.updated_at.isoformat(),
+            }
+            for u in users
+        ],
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "has_next": (offset + limit) < total,
+    }
+
+
+@router.get("/users/{user_id}")
+def get_user(
+    user_id: str,
+    _: dict = Depends(require_role("admin")),
+    db: Session = Depends(get_db),
+):
+    """Get a single user's details."""
+    user = db.query(User).filter(User.id == user_id).first()
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    return {
+        "id": user.id,
+        "email": user.email,
+        "full_name": user.full_name,
+        "role": user.role.value,
+        "is_active": user.is_active,
+        "created_at": user.created_at.isoformat(),
+        "updated_at": user.updated_at.isoformat(),
+    }
+
+
+@router.put("/users/{user_id}")
+def update_user(
+    user_id: str,
+    payload: dict,
+    request: Request,
+    current_user: dict = Depends(require_role("admin")),
+    db: Session = Depends(get_db),
+):
+    """
+    Update a user's role or is_active status.
+
+    Body: {role?: "patient"|"doctor"|"admin", is_active?: bool}
+    """
+    user = db.query(User).filter(User.id == user_id).first()
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    changes = []
+
+    # Update role if provided
+    if "role" in payload and payload["role"]:
+        new_role = payload["role"].lower()
+        if new_role not in ["patient", "doctor", "admin"]:
+            raise HTTPException(status_code=400, detail="Invalid role")
+        if user.role.value != new_role:
+            changes.append(f"role: {user.role.value} → {new_role}")
+            user.role = new_role
+
+    # Update is_active if provided
+    if "is_active" in payload and payload["is_active"] is not None:
+        new_active = bool(payload["is_active"])
+        if user.is_active != new_active:
+            changes.append(f"is_active: {user.is_active} → {new_active}")
+            user.is_active = new_active
+
+    if not changes:
+        # No changes made, return current state
+        return {
+            "id": user.id,
+            "email": user.email,
+            "full_name": user.full_name,
+            "role": user.role.value,
+            "is_active": user.is_active,
+            "created_at": user.created_at.isoformat(),
+            "updated_at": user.updated_at.isoformat(),
+        }
+
+    db.commit()
+
+    # Log the update
+    write_audit(
+        db,
+        user_id=current_user["user_id"],
+        user_email=current_user["email"],
+        user_role=current_user["role"],
+        action="update_user",
+        resource_type="admin",
+        resource_id=user_id,
+        ip_address=get_client_ip(request),
+        details=f"Changes: {'; '.join(changes)}",
+    )
+
+    return {
+        "id": user.id,
+        "email": user.email,
+        "full_name": user.full_name,
+        "role": user.role.value,
+        "is_active": user.is_active,
+        "created_at": user.created_at.isoformat(),
+        "updated_at": user.updated_at.isoformat(),
     }

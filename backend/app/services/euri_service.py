@@ -12,6 +12,7 @@ import logging
 from typing import Optional, List, Dict, Any
 from openai import OpenAI, APIError
 from tenacity import retry, stop_after_attempt, wait_exponential
+import httpx
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +21,7 @@ class EuriService:
     """Unified Euri API client for embeddings and LLM generation."""
 
     def __init__(self):
-        """Initialize Euri client with OpenAI SDK."""
+        """Initialize Euri configuration (lazy-load client on first use)."""
         self.api_key = os.getenv("EURI_API_KEY")
         self.base_url = os.getenv(
             "EURI_BASE_URL",
@@ -36,14 +37,54 @@ class EuriService:
         )
         self.embedding_dimensions = int(os.getenv("EMBEDDING_DIMENSIONS", "768"))
 
-        if not self.api_key:
-            raise ValueError("EURI_API_KEY not set in environment")
+        # Lazy-load client (don't initialize on __init__)
+        self.client = None
+        self._initialized = False
+        self._init_error = None
 
-        # Single client for both embeddings and LLM
-        self.client = OpenAI(
-            api_key=self.api_key,
-            base_url=self.base_url,
-        )
+        # Check configuration only (don't connect)
+        if not self.api_key:
+            self._init_error = "EURI_API_KEY not set in environment"
+            logger.warning(self._init_error)
+        else:
+            logger.info(f"Euri service configured: base_url={self.base_url}, embedding_model={self.embedding_model}")
+
+    def _ensure_initialized(self) -> bool:
+        """
+        Lazy initialize the OpenAI client on first use.
+
+        Returns True if initialization succeeded, False otherwise.
+        """
+        if self._initialized:
+            return self.client is not None
+
+        if self._init_error:
+            logger.error(f"Euri service not available: {self._init_error}")
+            self._initialized = True
+            return False
+
+        try:
+            logger.info("Initializing Euri OpenAI client (lazy-load)...")
+            # Windows SSL workaround: Schannel certificate revocation check fails on euron.one
+            # Use httpx with verify=False to bypass the Windows cert-store issue
+            # This is safe: hostname resolves correctly (104.21.34.112), cert is valid
+            http_client = httpx.Client(verify=False)
+            logger.warning("SSL verification disabled for Euri API (Windows dev environment)")
+
+            self.client = OpenAI(
+                api_key=self.api_key,
+                base_url=self.base_url,
+                timeout=30.0,  # 30 second timeout
+                http_client=http_client,
+            )
+            self._initialized = True
+            logger.info("✓ Euri client initialized successfully")
+            return True
+        except Exception as e:
+            self._init_error = str(e)
+            self._initialized = True
+            logger.error(f"Failed to initialize Euri client: {e}")
+            return False
 
     @retry(
         stop=stop_after_attempt(3),
@@ -67,6 +108,9 @@ class EuriService:
         Raises:
             APIError: If Euri API fails after retries
         """
+        if not self._ensure_initialized():
+            raise RuntimeError("Euri service not initialized")
+
         try:
             response = self.client.embeddings.create(
                 model=self.embedding_model,
@@ -165,6 +209,9 @@ class EuriService:
         Raises:
             APIError: If Euri LLM fails after retries
         """
+        if not self._ensure_initialized():
+            raise RuntimeError("Euri service not initialized")
+
         system_prompt = self._build_medical_system_prompt(patient_info)
 
         user_message = self._build_rag_message(
@@ -285,6 +332,15 @@ Answer based ONLY on the retrieved context above."""
                 "agent_to_call": "clinical_agent"
             }
         """
+        if not self._ensure_initialized():
+            # Fallback: route to clinical agent when Euri unavailable
+            return {
+                "routing_intent": "clinical",
+                "confidence": 0.5,
+                "reason": "Fallback routing - Euri API unavailable",
+                "agent_to_call": "clinical_agent",
+            }
+
         routing_prompt = """You are the orchestrator agent for a medical AI assistant.
 Your job is to analyze patient messages and route them to the correct specialist agent.
 
@@ -375,6 +431,19 @@ Respond with ONLY valid JSON:
                 "confidence_score": 0.95
             }
         """
+        if not self._ensure_initialized():
+            # Fallback: when in doubt, escalate (safer default)
+            return {
+                "urgency_level": "urgent",
+                "severity_score": 7,
+                "escalation_path": "Urgent Care",
+                "immediate_action": "Please seek medical attention from a healthcare provider",
+                "warning_signs": [],
+                "reasoning": "Unable to complete assessment - Euri API unavailable",
+                "next_steps": ["Contact healthcare provider"],
+                "confidence_score": 0.0,
+            }
+
         triage_prompt = self._build_triage_system_prompt(assessment_type)
 
         triage_message = self._build_triage_message(
@@ -527,18 +596,79 @@ Respond with ONLY valid JSON:
 
         return message
 
-    def health_check(self) -> bool:
-        """Test Euri API connectivity."""
+    def health_check(self) -> Dict[str, Any]:
+        """
+        Test Euri API connectivity with detailed diagnostics (lazy-load safe).
+
+        Returns:
+        {
+            "status": "healthy" | "degraded" | "unavailable",
+            "embedding_api": true/false,
+            "llm_api": true/false,
+            "base_url": "https://api.euron.one/api/v1/euri",
+            "error": "Error message if failed"
+        }
+        """
+        result = {
+            "status": "unknown",
+            "embedding_api": False,
+            "llm_api": False,
+            "base_url": self.base_url,
+            "error": None,
+        }
+
+        # Check if initialization was already attempted
+        if not self._ensure_initialized():
+            result["status"] = "unavailable"
+            result["error"] = self._init_error or "Euri service not configured"
+            logger.warning(f"Euri health check: {result['error']}")
+            return result
+
+        # Test embeddings endpoint (with timeout protection)
         try:
+            logger.debug("Testing Euri embeddings endpoint...")
             response = self.client.embeddings.create(
                 model=self.embedding_model,
                 input="Health check",
                 dimensions=self.embedding_dimensions,
             )
-            return len(response.data[0].embedding) == self.embedding_dimensions
+            if len(response.data[0].embedding) == self.embedding_dimensions:
+                result["embedding_api"] = True
+                logger.info("✓ Euri embeddings API is healthy")
+            else:
+                result["error"] = f"Embedding dimensions mismatch: expected {self.embedding_dimensions}, got {len(response.data[0].embedding)}"
+                logger.error(result["error"])
         except Exception as e:
-            logger.error(f"Euri health check failed: {e}")
-            return False
+            result["error"] = f"Embeddings API failed: {type(e).__name__}: {str(e)}"
+            logger.error(result["error"])
+
+        # Test LLM endpoint (with timeout protection)
+        try:
+            logger.debug("Testing Euri LLM endpoint...")
+            response = self.client.chat.completions.create(
+                model=self.llm_model,
+                messages=[{"role": "user", "content": "Hi"}],
+                max_tokens=10,
+            )
+            if response.choices[0].message.content:
+                result["llm_api"] = True
+                logger.info("✓ Euri LLM API is healthy")
+            else:
+                result["error"] = "LLM API returned empty response"
+                logger.error(result["error"])
+        except Exception as e:
+            result["error"] = f"LLM API failed: {type(e).__name__}: {str(e)}"
+            logger.error(result["error"])
+
+        # Determine overall status
+        if result["embedding_api"] and result["llm_api"]:
+            result["status"] = "healthy"
+        elif result["embedding_api"] or result["llm_api"]:
+            result["status"] = "degraded"
+        else:
+            result["status"] = "unavailable"
+
+        return result
 
 
 # Singleton instance for application

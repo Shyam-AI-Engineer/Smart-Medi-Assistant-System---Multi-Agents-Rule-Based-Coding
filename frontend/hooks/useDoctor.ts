@@ -17,3 +17,19 @@ export function usePatientDetail(patientId: string | undefined, vitalsLimit = 30
     enabled: !!patientId,
   });
 }
+
+export function useDoctorAppointments(statusFilter?: string) {
+  return useQuery({
+    queryKey: ["doctor-appointments", statusFilter],
+    queryFn: () => endpoints.doctorAppointments(statusFilter),
+    refetchInterval: 30_000,
+  });
+}
+
+export function useUnreadMessageCount() {
+  return useQuery({
+    queryKey: ["unread-message-count"],
+    queryFn: () => endpoints.getUnreadMessageCount(),
+    refetchInterval: 30_000,
+  });
+}

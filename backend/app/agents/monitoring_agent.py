@@ -401,7 +401,7 @@ class MonitoringAgent(BaseAgent):
             )
             return response.choices[0].message.content
         except Exception as e:
-            logger.warning(f"Failed to generate overall assessment: {e}")
+            logger.warning(f"Failed to generate overall assessment (falling back): {type(e).__name__}: {e}")
             return "Patient vital signs require monitoring. Consult healthcare provider for complete evaluation."
 
     def _generate_recommendations(

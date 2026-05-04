@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useMemo, useState } from "react";
-import { ArrowLeft, Calendar, Send } from "lucide-react";
+import { ArrowLeft, Calendar, Send, Download } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
@@ -15,7 +15,17 @@ import { usePatientDetail } from "@/hooks/useDoctor";
 import { useDoctorMessages, useSendDoctorMessage } from "@/hooks/useMessages";
 import { formatDateTime } from "@/lib/format";
 import { cn } from "@/lib/cn";
+import { endpoints } from "@/lib/api";
 import type { VitalRecord } from "@/lib/api";
+
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 type Metric = "heart_rate" | "blood_pressure_systolic" | "oxygen_saturation" | "temperature";
 
@@ -147,6 +157,19 @@ export default function PatientDetailPage() {
   const patientId = params?.patient_id as string | undefined;
 
   const { data, isLoading } = usePatientDetail(patientId, 30, 20);
+  const [exporting, setExporting] = useState(false);
+
+  async function handleExport() {
+    if (!patientId) return;
+    setExporting(true);
+    try {
+      const blob = await endpoints.exportPatientSummary(patientId);
+      const name = data?.patient?.full_name?.replace(/\s+/g, "_") ?? "patient";
+      downloadBlob(blob, `patient_summary_${name}.pdf`);
+    } finally {
+      setExporting(false);
+    }
+  }
 
   const vitals = data?.vitals ?? [];
 
@@ -197,6 +220,17 @@ export default function PatientDetailPage() {
       <PageHeader
         title={patient.full_name || "Unknown Patient"}
         description={`ID: ${patient.id} • ${patient.user?.email || "No email"}`}
+        actions={
+          <Button
+            variant="secondary"
+            size="md"
+            onClick={handleExport}
+            loading={exporting}
+            disabled={exporting}
+          >
+            <Download className="size-4" /> Export PDF
+          </Button>
+        }
       />
 
       {/* Summary Cards */}

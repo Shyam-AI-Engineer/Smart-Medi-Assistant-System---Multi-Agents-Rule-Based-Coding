@@ -98,11 +98,11 @@ function TriageResult({ result, onReset }: { result: TriageResponse; onReset: ()
 
         {(result.urgency_level === "critical" || result.urgency_level === "urgent") && (
           <a
-            href="tel:911"
+            href="tel:108"
             className="mt-4 flex items-center justify-center gap-2 w-full py-2.5 rounded-lg bg-danger-600 text-white text-sm font-semibold hover:bg-danger-700 transition-colors"
           >
             <Phone className="size-4" />
-            Call Emergency Services (911)
+            Call 108 (Ambulance)
           </a>
         )}
       </div>

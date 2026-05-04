@@ -172,6 +172,10 @@ export interface ChatStreamMeta {
   confidence_score: number;
   sources?: ChatResponse["sources"];
   context_documents_used?: number;
+  requires_escalation?: boolean;
+  urgency_level?: string;
+  immediate_action?: string;
+  emergency_number?: string;
 }
 
 export async function sendChatStream(
@@ -303,6 +307,17 @@ export interface PatientDetailResponse {
   summary: PatientDetailSummary;
 }
 
+export interface UnreadMessageByPatient {
+  patient_id: string;
+  patient_name: string;
+  count: number;
+}
+
+export interface UnreadMessageCountResponse {
+  total_unread: number;
+  by_patient: UnreadMessageByPatient[];
+}
+
 export interface TranscribeResponse {
   transcript: string;
   language: string;
@@ -392,6 +407,134 @@ export interface MessageListResponse {
   unread_count: number;
 }
 
+// ── Audit Logs ───────────────────────────────────────────────────────────────
+
+export interface AuditLogItem {
+  id: string;
+  user_id: string;
+  user_email: string;
+  user_role: string;
+  action: string;
+  resource_type: string;
+  resource_id: string | null;
+  outcome: "success" | "failure" | string;
+  ip_address: string | null;
+  details: string | null;
+  created_at: string;
+}
+
+export interface AuditLogResponse {
+  items: AuditLogItem[];
+  total: number;
+  page: number;
+  limit: number;
+  has_next: boolean;
+}
+
+export interface AuditLogBreakdownItem {
+  action: string;
+  success: number;
+  failure: number;
+  total: number;
+}
+
+export interface AuditLogSummary {
+  total_events: number;
+  failures: number;
+  unique_users: number;
+  breakdown: AuditLogBreakdownItem[];
+  days: number;
+}
+
+// ── Admin Analytics ──────────────────────────────────────────────────────────
+
+export interface AdminOverview {
+  total_patients: number;
+  total_messages: number;
+  dau: number;
+  messages_today: number;
+  avg_confidence: number;
+  anomaly_rate: number;
+  total_vitals: number;
+  satisfaction_rate: number | null;
+}
+
+export interface DailyMetric {
+  day: string;
+  messages: number;
+  active_patients: number;
+  avg_confidence: number;
+}
+
+export interface AgentStat {
+  agent: string;
+  count: number;
+}
+
+export interface AnomalyDay {
+  day: string;
+  total_vitals: number;
+  anomalies: number;
+  rate: number;
+}
+
+// ── Admin Users ──────────────────────────────────────────────────────────────
+
+export interface AdminUser {
+  id: string;
+  email: string;
+  full_name: string;
+  role: "patient" | "doctor" | "admin";
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AdminUsersResponse {
+  items: AdminUser[];
+  total: number;
+  limit: number;
+  offset: number;
+  has_next: boolean;
+}
+
+// ── Appointments ─────────────────────────────────────────────────────────────
+
+export type AppointmentStatus = "pending" | "confirmed" | "cancelled" | "completed";
+export type TimeSlot = "morning" | "afternoon" | "evening" | "any";
+
+export interface AppointmentItem {
+  id: string;
+  patient_id: string;
+  doctor_user_id?: string | null;
+  doctor_name?: string | null;
+  patient_name?: string | null;
+  reason: string;
+  preferred_date?: string | null;
+  preferred_time_slot?: string | null;
+  status: AppointmentStatus;
+  doctor_notes?: string | null;
+  scheduled_at?: string | null;
+  ai_suggested: boolean;
+  attachment_path?: string | null;
+  created_at: string;
+}
+
+export interface AppointmentListResponse {
+  items: AppointmentItem[];
+  total: number;
+}
+
+export interface RequestAppointmentPayload {
+  reason: string;
+  preferred_date?: string | null;
+  preferred_time_slot?: string | null;
+  ai_suggested?: boolean;
+  attachment?: File | null;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 export async function uploadReport(file: File): Promise<ReportItem> {
   const form = new FormData();
   form.append("file", file);
@@ -475,4 +618,72 @@ export const endpoints = {
     api.post<DoctorMessage>(`/doctor/patients/${patientId}/messages`, { body }).then((r) => r.data),
   getDoctorMessages: (patientId: string) =>
     api.get<MessageListResponse>(`/doctor/patients/${patientId}/messages`).then((r) => r.data),
+  getUnreadMessageCount: () =>
+    api.get<UnreadMessageCountResponse>("/doctor/messages/unread-count").then((r) => r.data),
+
+  // Appointments (patient)
+  listAppointments: () =>
+    api.get<AppointmentListResponse>("/appointments/").then((r) => r.data),
+  requestAppointment: (payload: RequestAppointmentPayload) => {
+    const form = new FormData();
+    form.append("reason", payload.reason);
+    if (payload.preferred_date) form.append("preferred_date", payload.preferred_date);
+    if (payload.preferred_time_slot) form.append("preferred_time_slot", payload.preferred_time_slot);
+    form.append("ai_suggested", String(payload.ai_suggested ?? false));
+    if (payload.attachment) form.append("attachment", payload.attachment);
+    return api.post<AppointmentItem>("/appointments/", form).then((r) => r.data);
+  },
+  cancelAppointment: (id: string) =>
+    api.delete(`/appointments/${id}`).then((r) => r.data),
+
+  // Appointments (doctor)
+  doctorAppointments: (status?: string) =>
+    api
+      .get<AppointmentListResponse>("/doctor/appointments", { params: status ? { status_filter: status } : {} })
+      .then((r) => r.data),
+  updateAppointment: (id: string, payload: Record<string, unknown>) =>
+    api.put<AppointmentItem>(`/doctor/appointments/${id}`, payload).then((r) => r.data),
+
+  // Audit logs (admin)
+  auditLogs: (params: {
+    page?: number;
+    limit?: number;
+    action?: string;
+    resource_type?: string;
+    outcome?: string;
+    search?: string;
+    date_from?: string;
+    date_to?: string;
+  }) =>
+    api
+      .get<AuditLogResponse>("/admin/audit-logs", { params })
+      .then((r) => r.data),
+  auditLogsSummary: (days = 30) =>
+    api
+      .get<AuditLogSummary>("/admin/audit-logs/summary", { params: { days } })
+      .then((r) => r.data),
+
+  // PDF Export
+  exportMyVitals: (patientId: string) =>
+    api.get(`/vitals/${patientId}/export`, { responseType: "blob" }).then((r) => r.data as Blob),
+  exportPatientSummary: (patientId: string) =>
+    api.get(`/doctor/patients/${patientId}/export`, { responseType: "blob" }).then((r) => r.data as Blob),
+
+  // Admin analytics
+  adminOverview: () =>
+    api.get<AdminOverview>("/admin/analytics/overview").then((r) => r.data),
+  adminDailyMetrics: (days = 30) =>
+    api.get<DailyMetric[]>("/admin/analytics/daily", { params: { days } }).then((r) => r.data),
+  adminAgentStats: (days = 30) =>
+    api.get<AgentStat[]>("/admin/analytics/agents", { params: { days } }).then((r) => r.data),
+  adminAnomalyTrend: (days = 30) =>
+    api.get<AnomalyDay[]>("/admin/analytics/anomalies", { params: { days } }).then((r) => r.data),
+
+  // Admin users
+  listAdminUsers: (params?: { limit?: number; offset?: number; search?: string; role?: string }) =>
+    api.get<AdminUsersResponse>("/admin/users", { params }).then((r) => r.data),
+  getAdminUser: (userId: string) =>
+    api.get<AdminUser>(`/admin/users/${userId}`).then((r) => r.data),
+  updateAdminUser: (userId: string, payload: { role?: string; is_active?: boolean }) =>
+    api.put<AdminUser>(`/admin/users/${userId}`, payload).then((r) => r.data),
 };

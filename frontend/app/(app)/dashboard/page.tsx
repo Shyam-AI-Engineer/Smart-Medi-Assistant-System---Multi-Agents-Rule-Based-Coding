@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
-import { Heart, Activity, Wind, Thermometer, Plus, Sparkles } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Heart, Activity, Wind, Thermometer, Plus, Sparkles, Download } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
@@ -13,7 +13,17 @@ import { MetricCard, type Trend } from "@/components/dashboard/MetricCard";
 import { VitalsChart, type ChartPoint } from "@/components/dashboard/VitalsChart";
 import { useMyPatientProfile, useVitalsHistory } from "@/hooks/useVitals";
 import { formatDateTime, relativeTime } from "@/lib/format";
+import { endpoints } from "@/lib/api";
 import type { VitalRecord } from "@/lib/api";
+
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 type Metric = "heart_rate" | "blood_pressure_systolic" | "oxygen_saturation" | "temperature";
 
@@ -49,6 +59,18 @@ function computeTrend(records: VitalRecord[], metric: Metric, lowerIsBad = false
 export default function DashboardPage() {
   const { data: profile } = useMyPatientProfile();
   const { data, isLoading } = useVitalsHistory(profile?.id, 30);
+  const [exporting, setExporting] = useState(false);
+
+  async function handleExport() {
+    if (!profile?.id) return;
+    setExporting(true);
+    try {
+      const blob = await endpoints.exportMyVitals(profile.id);
+      downloadBlob(blob, "my_vitals_report.pdf");
+    } finally {
+      setExporting(false);
+    }
+  }
 
   const records = data?.items ?? [];
   const latest = records[0];
@@ -80,6 +102,17 @@ export default function DashboardPage() {
         description="Overview of your most recent vitals and trends."
         actions={
           <>
+            {records.length > 0 && (
+              <Button
+                variant="secondary"
+                size="md"
+                onClick={handleExport}
+                loading={exporting}
+                disabled={exporting}
+              >
+                <Download className="size-4" /> Export PDF
+              </Button>
+            )}
             <Link href="/chat">
               <Button variant="secondary" size="md">
                 <Sparkles className="size-4" /> Ask AI

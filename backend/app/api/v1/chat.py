@@ -264,9 +264,9 @@ def health_check(db: Session = Depends(get_db)) -> dict:
 
     Returns:
         {
-            "status": "healthy" | "degraded",
+            "status": "healthy" | "degraded" | "unavailable",
             "services": {
-                "euri": bool,
+                "euri": {"status": "...", "embedding_api": bool, "llm_api": bool, "error": null/str},
                 "faiss": bool,
                 "database": bool
             }
@@ -275,12 +275,19 @@ def health_check(db: Session = Depends(get_db)) -> dict:
     try:
         service = ChatService(db)
 
-        # Check Euri
-        euri_ok = False
+        # Check Euri (now returns detailed dict)
+        euri_health = None
         try:
-            euri_ok = bool(service.euri.health_check())
+            euri_health = service.euri.health_check()
+            logger.info(f"Euri health: {euri_health['status']}")
         except Exception as e:
-            logger.warning(f"Euri health check failed: {e}")
+            logger.error(f"Euri health check failed: {e}")
+            euri_health = {
+                "status": "unavailable",
+                "embedding_api": False,
+                "llm_api": False,
+                "error": str(e)
+            }
 
         # Check FAISS
         faiss_ok = False
@@ -298,12 +305,13 @@ def health_check(db: Session = Depends(get_db)) -> dict:
         except Exception as e:
             logger.warning(f"Database health check failed: {e}")
 
+        euri_ok = euri_health and euri_health["status"] == "healthy"
         overall = euri_ok and faiss_ok and db_ok
 
         return {
             "status": "healthy" if overall else "degraded",
             "services": {
-                "euri": euri_ok,
+                "euri": euri_health,
                 "faiss": faiss_ok,
                 "database": db_ok,
             },
