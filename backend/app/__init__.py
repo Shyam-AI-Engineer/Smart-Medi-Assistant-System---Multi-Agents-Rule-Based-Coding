@@ -1,6 +1,7 @@
 """FastAPI app factory."""
 from pathlib import Path
 from dotenv import load_dotenv
+import os
 
 # Load .env FIRST, before anything else
 env_file = Path(__file__).parent.parent / ".env"
@@ -95,12 +96,15 @@ def create_app() -> FastAPI:
     app.add_middleware(SlowAPIMiddleware)
 
     # CORS - Allow frontend to call backend
+    cors_origins = os.getenv(
+        "CORS_ORIGINS",
+        "http://localhost:3000,http://localhost:8000"
+    ).split(",")
+    cors_origins = [origin.strip() for origin in cors_origins]
+
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[
-            "http://localhost:3000",  # Local frontend
-            "http://localhost:8000",  # Swagger docs
-        ],
+        allow_origins=cors_origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
