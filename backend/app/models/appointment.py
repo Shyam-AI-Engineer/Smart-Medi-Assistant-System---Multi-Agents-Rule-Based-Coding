@@ -29,3 +29,4 @@ class Appointment(BaseModel):
     doctor_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     scheduled_at: Mapped[str | None] = mapped_column(String(50), nullable=True)
     ai_suggested: Mapped[bool] = mapped_column(default=False)
+    attachment_path: Mapped[str | None] = mapped_column(String(500), nullable=True)

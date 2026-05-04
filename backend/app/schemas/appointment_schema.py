@@ -30,6 +30,7 @@ class AppointmentItem(BaseModel):
     doctor_notes: Optional[str] = None
     scheduled_at: Optional[str] = None
     ai_suggested: bool
+    attachment_path: Optional[str] = None
     created_at: str
 
     class Config:

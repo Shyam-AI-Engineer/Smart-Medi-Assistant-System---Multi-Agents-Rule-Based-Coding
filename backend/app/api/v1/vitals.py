@@ -31,6 +31,7 @@ from app.middleware.rate_limit import limiter
 from app.extensions import get_db
 from app.agents.monitoring_agent import get_monitoring_agent
 from app.services.vitals_service import VitalsService
+from app.utils.audit import write_audit, get_client_ip
 
 logger = logging.getLogger(__name__)
 
@@ -216,11 +217,23 @@ def store_vitals(
         service = VitalsService(db)
         result = service.store_and_analyze(vitals_request, current_user)
 
-        return VitalsStoreResponse(
+        response = VitalsStoreResponse(
             record=VitalRecordResponse.model_validate(result["record"]),
             analysis=result["analysis"],
             trend=result["trend"],
         )
+        write_audit(
+            db,
+            user_id=current_user["user_id"],
+            user_email=current_user["email"],
+            user_role=current_user["role"],
+            action="record_vitals",
+            resource_type="vitals",
+            resource_id=response.record.id,
+            ip_address=get_client_ip(request),
+            details=f"status={result['analysis'].overall_status} trend={result['trend']}",
+        )
+        return response
 
     except HTTPException:
         raise

@@ -79,12 +79,13 @@ try:
     redis_client = redis.from_url(
         REDIS_URL,
         encoding="utf-8",
-        decode_responses=True,  # Return strings instead of bytes
+        decode_responses=True,
+        socket_connect_timeout=2,  # Quick timeout
     )
     # Test connection
     redis_client.ping()
-except redis.ConnectionError:
-    print("WARNING: Redis not available - caching disabled")
+except (redis.ConnectionError, redis.TimeoutError, Exception) as e:
+    print(f"WARNING: Redis not available ({type(e).__name__}) - caching disabled")
     redis_client = None
 
 

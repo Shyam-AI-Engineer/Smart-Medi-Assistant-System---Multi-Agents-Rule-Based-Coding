@@ -7,6 +7,8 @@ from .chat_history import ChatHistory
 from .medical_report import MedicalReport, ReportStatus
 from .medication import Medication
 from .doctor_message import DoctorMessage
+from .appointment import Appointment
+from .audit_log import AuditLog
 
 __all__ = [
     "BaseModel",
@@ -19,4 +21,6 @@ __all__ = [
     "ReportStatus",
     "Medication",
     "DoctorMessage",
+    "Appointment",
+    "AuditLog",
 ]

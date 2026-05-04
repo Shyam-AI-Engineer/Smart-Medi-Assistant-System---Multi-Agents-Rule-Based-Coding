@@ -11,6 +11,8 @@ from .reports import router as reports_router
 from .medications import router as medications_router
 from .triage import router as triage_router
 from .messages import router as messages_router
+from .appointments import router as appointments_router
+from .admin import router as admin_router
 
 api_router = APIRouter(prefix="/api/v1")
 api_router.include_router(auth_router)
@@ -23,5 +25,7 @@ api_router.include_router(reports_router)
 api_router.include_router(medications_router)
 api_router.include_router(triage_router)
 api_router.include_router(messages_router)
+api_router.include_router(appointments_router)
+api_router.include_router(admin_router)
 
 __all__ = ["api_router"]

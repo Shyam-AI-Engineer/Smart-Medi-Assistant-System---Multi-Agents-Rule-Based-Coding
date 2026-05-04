@@ -8,7 +8,7 @@ Routes:
 """
 import logging
 from typing import List, Optional, Dict, Any
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -20,6 +20,7 @@ from app.models.appointment import Appointment
 from app.schemas.patient_schema import PatientProfileResponse, VitalsResponse
 from app.schemas.chat_schema import ChatResponse
 from app.schemas.message_schema import SendMessageRequest
+from app.utils.audit import write_audit, get_client_ip
 
 logger = logging.getLogger(__name__)
 
@@ -185,6 +186,7 @@ def list_all_patients(
     description="Retrieve detailed patient view with vitals and chat history",
 )
 def get_patient_detail(
+    request: Request,
     patient_id: str,
     vitals_limit: int = Query(
         default=30, ge=1, le=100, description="Max vitals records"
@@ -305,6 +307,18 @@ def get_patient_detail(
             if latest_vital
             else None,
         }
+
+        write_audit(
+            db,
+            user_id=current_user["user_id"],
+            user_email=current_user["email"],
+            user_role=current_user["role"],
+            action="view_patient",
+            resource_type="patient",
+            resource_id=patient_id,
+            ip_address=get_client_ip(request),
+            details=f"vitals={len(vitals_list)} chats={len(chat_list)}",
+        )
 
         return {
             "patient": patient_dict,
@@ -511,6 +525,7 @@ def _appt_dict(a: Appointment, patient_name: str) -> Dict[str, Any]:
         "doctor_notes": a.doctor_notes,
         "scheduled_at": a.scheduled_at,
         "ai_suggested": a.ai_suggested,
+        "attachment_path": a.attachment_path,
         "created_at": a.created_at.isoformat(),
     }
 

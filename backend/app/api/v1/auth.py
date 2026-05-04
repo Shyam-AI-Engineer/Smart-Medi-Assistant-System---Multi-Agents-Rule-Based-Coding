@@ -8,6 +8,7 @@ from app.middleware.auth_middleware import get_current_user
 from app.middleware.rate_limit import limiter
 from app.services.auth_service import AuthService
 from app.schemas.auth_schema import RegisterRequest, LoginRequest, TokenResponse, MeResponse
+from app.utils.audit import write_audit, get_client_ip
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 _security = HTTPBearer()
@@ -30,7 +31,17 @@ def register(
 
     Returns access + refresh JWT tokens on success.
     """
-    return AuthService(db).register(body)
+    result = AuthService(db).register(body)
+    write_audit(
+        db,
+        user_id=result.user_id,
+        user_email=result.email,
+        user_role=result.role,
+        action="register",
+        resource_type="auth",
+        ip_address=get_client_ip(request),
+    )
+    return result
 
 
 @router.post(
@@ -49,7 +60,42 @@ def login(
 
     Returns access + refresh JWT tokens.
     """
-    return AuthService(db).login(body)
+    from fastapi import HTTPException as _HTTPException
+    try:
+        result = AuthService(db).login(body)
+    except _HTTPException:
+        # Log failed login attempt using a fresh session so the rollback
+        # from get_db() doesn't swallow the audit row.
+        from app.extensions import SessionLocal
+        _audit_db = SessionLocal()
+        try:
+            write_audit(
+                _audit_db,
+                user_id="unknown",
+                user_email=body.email,
+                user_role="unknown",
+                action="login",
+                resource_type="auth",
+                outcome="failure",
+                ip_address=get_client_ip(request),
+                details="invalid credentials",
+            )
+            _audit_db.commit()
+        except Exception:
+            _audit_db.rollback()
+        finally:
+            _audit_db.close()
+        raise
+    write_audit(
+        db,
+        user_id=result.user_id,
+        user_email=result.email,
+        user_role=result.role,
+        action="login",
+        resource_type="auth",
+        ip_address=get_client_ip(request),
+    )
+    return result
 
 
 @router.post(

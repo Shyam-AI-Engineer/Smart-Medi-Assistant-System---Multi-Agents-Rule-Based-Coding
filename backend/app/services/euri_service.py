@@ -368,7 +368,7 @@ Respond with ONLY valid JSON:
                 "urgency_level": "critical|urgent|moderate|self-care",
                 "severity_score": 8,
                 "escalation_path": "ER",
-                "immediate_action": "Call 911 or go to emergency room",
+                "immediate_action": "Call 108 (ambulance) or go to emergency room",
                 "warning_signs": ["Severe chest pain", "Difficulty breathing"],
                 "reasoning": "Patient reports chest pain with dyspnea",
                 "next_steps": ["Seek immediate attention", "Do not drive"],
@@ -438,7 +438,7 @@ CRITICAL RULES:
 6. Identify specific warning signs
 
 Urgency levels:
-- critical (9-10): Immediate life threat, call 911
+- critical (9-10): Immediate life threat, call 108 (ambulance)
 - urgent (7-8): Needs evaluation within hours, go to ER/Urgent Care
 - moderate (4-6): Should see doctor today or within 24h
 - self-care (1-3): Manageable at home, monitor closely
@@ -467,7 +467,7 @@ CRITICAL RULES:
 7. Identify specific warning signs that require emergency care
 
 Urgency levels:
-- critical (9-10): Seek immediate emergency care, call 911
+- critical (9-10): Seek immediate emergency care, call 108 (ambulance)
 - urgent (7-8): Needs evaluation in ER or urgent care today
 - moderate (4-6): Should see doctor within 24 hours
 - self-care (1-3): Manageable with self-care, monitor symptoms
