@@ -156,3 +156,6 @@ build/
 # - Never commit: node_modules (regenerate with npm install)
 # - Never commit: __pycache__, .pytest_cache
 # - Safe to commit: requirements.txt, package.json, .env.example, source code
+
+.vercel
+.env*.local
