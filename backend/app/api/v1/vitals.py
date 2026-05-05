@@ -231,7 +231,7 @@ def store_vitals(
             resource_type="vitals",
             resource_id=response.record.id,
             ip_address=get_client_ip(request),
-            details=f"status={result['analysis'].overall_status} trend={result['trend']}",
+            details=f"status={result['analysis'].get('overall_status', 'unknown')} trend={result['trend']}",
         )
         return response
 
