@@ -105,7 +105,7 @@ class OrchestratorAgent:
                     "agent_to_call": "monitoring_agent",
                 }
 
-            logger.info(f"Orchestrator routing message: {patient_message[:100]}...")
+            logger.info(f"Orchestrator routing message (len={len(patient_message)})")
 
             # Step 3: Call Euri to determine routing for general queries
             routing_result = self.euri.generate_orchestrator_response(
@@ -163,7 +163,7 @@ class OrchestratorAgent:
         message_lower = patient_message.lower()
         for keyword in critical_keywords:
             if keyword in message_lower:
-                logger.warning(f"Critical symptom detected: {keyword}")
+                logger.warning("Critical symptom keyword detected in message")
                 return True
 
         return False

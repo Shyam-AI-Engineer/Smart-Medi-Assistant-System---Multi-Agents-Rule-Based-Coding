@@ -1,5 +1,3 @@
-const TOKEN_KEY = "medi.access_token";
-const REFRESH_KEY = "medi.refresh_token";
 const USER_KEY = "medi.user";
 
 export interface AuthUser {
@@ -9,15 +7,9 @@ export interface AuthUser {
   full_name?: string;
 }
 
+// Tokens are stored only in httpOnly cookies (set by /api/auth/* route handlers).
+// Only non-sensitive user info is kept in localStorage.
 export const auth = {
-  getToken(): string | null {
-    if (typeof window === "undefined") return null;
-    return window.localStorage.getItem(TOKEN_KEY);
-  },
-  getRefreshToken(): string | null {
-    if (typeof window === "undefined") return null;
-    return window.localStorage.getItem(REFRESH_KEY);
-  },
   getUser(): AuthUser | null {
     if (typeof window === "undefined") return null;
     const raw = window.localStorage.getItem(USER_KEY);
@@ -28,19 +20,14 @@ export const auth = {
       return null;
     }
   },
-  setSession(opts: { accessToken: string; refreshToken?: string; user: AuthUser }) {
+  setSession(opts: { user: AuthUser }) {
     if (typeof window === "undefined") return;
-    window.localStorage.setItem(TOKEN_KEY, opts.accessToken);
-    if (opts.refreshToken) window.localStorage.setItem(REFRESH_KEY, opts.refreshToken);
     window.localStorage.setItem(USER_KEY, JSON.stringify(opts.user));
   },
   clear() {
     if (typeof window === "undefined") return;
-    window.localStorage.removeItem(TOKEN_KEY);
-    window.localStorage.removeItem(REFRESH_KEY);
     window.localStorage.removeItem(USER_KEY);
-  },
-  isAuthenticated(): boolean {
-    return Boolean(this.getToken());
+    // Clear httpOnly token cookies via server-side route handler (fire-and-forget)
+    void fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
   },
 };

@@ -1,7 +1,9 @@
 """Pydantic schemas for appointments."""
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from typing import Optional
 from datetime import datetime
+
+_VALID_STATUSES = {"confirmed", "cancelled", "completed", "pending"}
 
 
 class AppointmentRequest(BaseModel):
@@ -12,10 +14,17 @@ class AppointmentRequest(BaseModel):
 
 
 class AppointmentUpdateRequest(BaseModel):
-    status: str
+    status: Optional[str] = None
     doctor_notes: Optional[str] = None
     scheduled_at: Optional[str] = None
     doctor_user_id: Optional[str] = None
+
+    @field_validator("status")
+    @classmethod
+    def validate_status(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in _VALID_STATUSES:
+            raise ValueError(f"status must be one of {sorted(_VALID_STATUSES)}")
+        return v
 
 
 class AppointmentItem(BaseModel):

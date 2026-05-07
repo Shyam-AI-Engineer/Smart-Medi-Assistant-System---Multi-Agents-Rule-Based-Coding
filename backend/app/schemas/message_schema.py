@@ -28,3 +28,7 @@ class SendMessageRequest(BaseModel):
 class ReplyRequest(BaseModel):
     doctor_user_id: str = Field(..., min_length=1)
     body: str = Field(..., min_length=1, max_length=2000)
+
+
+class SuccessResponse(BaseModel):
+    success: bool = True

@@ -1,7 +1,7 @@
 """Auth service - register, login, refresh, get current user."""
 import logging
 from sqlalchemy.orm import Session
-from fastapi import HTTPException, status
+from app.exceptions import NotFoundError, ConflictError, AuthenticationError, ForbiddenError
 from app.models import User, Patient, UserRole
 from app.middleware.auth_middleware import (
     create_access_token,
@@ -22,10 +22,7 @@ class AuthService:
         """Register a new account and auto-create patient profile if role is patient/doctor."""
         existing = self.db.query(User).filter_by(email=request.email).first()
         if existing:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Email already registered",
-            )
+            raise ConflictError("Email already registered")
 
         # Determine role from request, validate it
         role_str = request.role or "patient"
@@ -52,42 +49,30 @@ class AuthService:
 
         self.db.commit()
 
-        logger.info(f"New user registered: {user.email} (role: {role.value})")
+        logger.info(f"New user registered: user_id={user.id} role={role.value}")
         return self._build_token_response(user)
 
     def login(self, request: LoginRequest) -> TokenResponse:
         """Authenticate with email + password and return tokens."""
         user = self.db.query(User).filter_by(email=request.email).first()
         if not user or not user.check_password(request.password):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid email or password",
-            )
+            raise AuthenticationError("Invalid email or password")
 
         if not user.is_active:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Account is disabled. Contact support.",
-            )
+            raise ForbiddenError("Account is disabled. Contact support.")
 
-        logger.info(f"User logged in: {user.email}")
+        logger.info(f"User logged in: user_id={user.id} role={user.role.value}")
         return self._build_token_response(user)
 
     def refresh(self, refresh_token: str) -> TokenResponse:
         """Issue a new access token from a valid refresh token."""
         payload = verify_refresh_token(refresh_token)
         if not payload:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid or expired refresh token",
-            )
+            raise AuthenticationError("Invalid or expired refresh token")
 
         user = self.db.query(User).filter_by(id=payload["user_id"]).first()
         if not user or not user.is_active:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="User not found or account disabled",
-            )
+            raise AuthenticationError("User not found or account disabled")
 
         return self._build_token_response(user)
 
@@ -95,7 +80,7 @@ class AuthService:
         """Fetch the currently authenticated user by ID."""
         user = self.db.query(User).filter_by(id=user_id).first()
         if not user:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+            raise NotFoundError("User not found")
         return user
 
     # ------------------------------------------------------------------

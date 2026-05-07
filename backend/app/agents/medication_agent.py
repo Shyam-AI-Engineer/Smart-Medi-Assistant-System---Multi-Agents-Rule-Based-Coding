@@ -113,7 +113,7 @@ class MedicationAgent:
                 "response": "Patient-friendly formatted text"
             }
         """
-        logger.info(f"Checking interactions for: {medications}")
+        logger.info(f"Checking interactions for {len(medications)} medication(s)")
 
         try:
             # Normalize drug names
@@ -208,7 +208,7 @@ class MedicationAgent:
                 "response": "Patient-friendly formatted text"
             }
         """
-        logger.info(f"Checking single medication: {medication}")
+        logger.info("Checking single medication")
 
         medication_lower = medication.lower().strip()
 
@@ -249,7 +249,7 @@ class MedicationAgent:
             ),
         }
 
-        logger.info(f"Single medication check complete: {medication}")
+        logger.info("Single medication check complete")
         return response
 
     def _find_interactions_rule_based(self, medications: List[str]) -> List[Dict]:

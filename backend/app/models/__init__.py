@@ -9,6 +9,7 @@ from .medication import Medication
 from .doctor_message import DoctorMessage
 from .appointment import Appointment
 from .audit_log import AuditLog
+from .doctor_patient_assignment import DoctorPatientAssignment
 
 __all__ = [
     "BaseModel",
@@ -23,4 +24,5 @@ __all__ = [
     "DoctorMessage",
     "Appointment",
     "AuditLog",
+    "DoctorPatientAssignment",
 ]

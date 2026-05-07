@@ -56,7 +56,10 @@ class ClinicalAgent:
             }
         """
         try:
-            logger.info(f"Clinical agent processing: {patient_question[:100]}...")
+            logger.info(
+                "Clinical agent processing question",
+                extra={"question_length": len(patient_question)},
+            )
 
             # Step 1: Embed the question
             question_embedding = self.euri.embed_text(patient_question)
@@ -66,9 +69,37 @@ class ClinicalAgent:
             context_docs = self.faiss.search_medical_context(
                 query_embedding=question_embedding,
                 top_k=5,
-                source_types=["text", "pdf"],  # Medical articles/guidelines
+                source_types=["text", "pdf"],
             )
-            logger.info(f"Retrieved {len(context_docs)} documents from FAISS")
+            logger.info("FAISS retrieval complete", extra={"doc_count": len(context_docs)})
+
+            # Calculate confidence based on context quality before generation
+            avg_relevance = (
+                sum(doc["score"] for doc in context_docs) / len(context_docs)
+                if context_docs
+                else 0.0
+            )
+
+            # Hallucination guardrail: refuse to generate when context is absent or
+            # irrelevant (avg similarity < 0.3 means the knowledge base has nothing
+            # reliable to anchor the answer).
+            if not context_docs or avg_relevance < 0.3:
+                logger.warning(
+                    "Insufficient retrieval context — returning safe fallback",
+                    extra={"doc_count": len(context_docs), "avg_relevance": avg_relevance},
+                )
+                return {
+                    "response": (
+                        "I don't have sufficient medical context in my knowledge base "
+                        "to answer this question reliably. Please consult a qualified "
+                        "healthcare professional for guidance."
+                    ),
+                    "sources": [],
+                    "confidence_score": 0.0,
+                    "agent_used": self.agent_name,
+                    "tokens_used": 0,
+                    "context_documents_used": 0,
+                }
 
             # Format context for LLM
             formatted_context = self.faiss.retrieve_medical_context(
@@ -76,8 +107,6 @@ class ClinicalAgent:
                 patient_id=patient_info.get("patient_id") if patient_info else None,
                 top_k=5,
             )
-
-            logger.debug(f"Formatted context for LLM: {len(formatted_context)} chars")
 
             # Step 3: Generate medical response
             response_text = self.euri.generate_medical_response(
@@ -96,20 +125,13 @@ class ClinicalAgent:
                     "relevance": f"{doc['score']:.1%}",
                     "excerpt": doc["content_preview"][:150],
                 }
-                for doc in context_docs[:3]  # Top 3 sources
+                for doc in context_docs[:3]
             ]
-
-            # Calculate confidence based on context quality
-            avg_relevance = (
-                sum(doc["score"] for doc in context_docs) / len(context_docs)
-                if context_docs
-                else 0.5
-            )
 
             return {
                 "response": response_text,
                 "sources": sources,
-                "confidence_score": min(0.99, avg_relevance),  # Cap at 0.99
+                "confidence_score": min(0.99, avg_relevance),
                 "agent_used": self.agent_name,
                 "tokens_used": int(len(response_text.split()) * 1.3),
                 "context_documents_used": len(context_docs),
@@ -225,7 +247,7 @@ class ClinicalAgent:
             if duration:
                 question += f" (duration: {duration})"
 
-            logger.info(f"Analyzing symptoms: {symptoms[:100]}...")
+            logger.info(f"Analyzing symptoms (len={len(symptoms)})")
 
             # Use medical RAG to get context
             question_embedding = self.euri.embed_text(question)

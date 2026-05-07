@@ -170,7 +170,7 @@ class MonitoringAgent(BaseAgent):
                 "disclaimer": "..."
             }
         """
-        logger.info(f"Analyzing vitals: {list(vitals.keys())}")
+        logger.info(f"Analyzing {len(vitals)} vital(s)")
 
         try:
             # Step 1: Analyze each vital sign

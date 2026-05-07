@@ -2,8 +2,8 @@
 import logging
 from typing import Dict, Any, List, Optional
 
-from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
+from app.exceptions import NotFoundError, ForbiddenError, DomainValidationError
 
 from app.models import Patient, Vitals
 from app.agents.monitoring_agent import get_monitoring_agent
@@ -73,10 +73,7 @@ class VitalsService:
                 vitals_for_analysis[field] = value
 
         if not vitals_for_analysis:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="At least one vital sign measurement is required",
-            )
+            raise DomainValidationError("At least one vital sign measurement is required")
 
         # Fetch recent history for trend analysis (before saving new record)
         recent_records = self._get_recent_records(patient.id, limit=5)
@@ -144,10 +141,7 @@ class VitalsService:
         """Fetch patient and enforce role-based access control."""
         patient = self.db.query(Patient).filter_by(id=patient_id).first()
         if not patient:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Patient {patient_id} not found",
-            )
+            raise NotFoundError(f"Patient {patient_id} not found")
 
         role = current_user.get("role")
         if role == "patient":
@@ -156,10 +150,7 @@ class VitalsService:
                 user_id=current_user["user_id"]
             ).first()
             if not own or own.id != patient_id:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Patients may only access their own vitals",
-                )
+                raise ForbiddenError("Patients may only access their own vitals")
 
         return patient
 

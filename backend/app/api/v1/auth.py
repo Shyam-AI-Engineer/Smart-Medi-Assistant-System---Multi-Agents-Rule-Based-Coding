@@ -9,6 +9,7 @@ from app.middleware.rate_limit import limiter
 from app.services.auth_service import AuthService
 from app.schemas.auth_schema import RegisterRequest, LoginRequest, TokenResponse, MeResponse
 from app.utils.audit import write_audit, get_client_ip
+from app.exceptions import AuthenticationError, ForbiddenError
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 _security = HTTPBearer()
@@ -49,6 +50,7 @@ def register(
     response_model=TokenResponse,
     summary="Login with email and password",
 )
+@limiter.limit("20/hour")
 @limiter.limit("5/minute")
 def login(
     request: Request,
@@ -60,10 +62,9 @@ def login(
 
     Returns access + refresh JWT tokens.
     """
-    from fastapi import HTTPException as _HTTPException
     try:
         result = AuthService(db).login(body)
-    except _HTTPException:
+    except (AuthenticationError, ForbiddenError):
         # Log failed login attempt using a fresh session so the rollback
         # from get_db() doesn't swallow the audit row.
         from app.extensions import SessionLocal

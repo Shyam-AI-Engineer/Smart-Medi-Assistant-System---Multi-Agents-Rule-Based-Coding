@@ -112,11 +112,11 @@ function LoginContent() {
           ? await endpoints.login({ email, password })
           : await endpoints.register({ email, password, full_name: fullName });
 
-      signIn(data.access_token, data.refresh_token, {
+      signIn({
         user_id: data.user_id,
         email: data.email,
         role: data.role,
-        full_name: data.full_name,
+        full_name: data.full_name ?? undefined,
       });
 
       const dest =

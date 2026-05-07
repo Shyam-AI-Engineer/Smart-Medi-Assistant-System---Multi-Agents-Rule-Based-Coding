@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Patient, User
 from app.models.doctor_message import DoctorMessage
-from app.schemas.message_schema import ReplyRequest
+from app.schemas.message_schema import ReplyRequest, MessageOut, MessageListResponse, SuccessResponse
 from app.middleware.auth_middleware import get_current_user
 from app.extensions import get_db
 
@@ -33,11 +33,11 @@ def _msg_dict(m: DoctorMessage, doctor_name: str) -> dict:
     }
 
 
-@router.get("/", summary="Patient inbox – all messages from doctors")
+@router.get("/", response_model=MessageListResponse, summary="Patient inbox – all messages from doctors")
 def get_inbox(
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
-) -> dict:
+) -> MessageListResponse:
     patient = db.query(Patient).filter_by(user_id=current_user["user_id"]).first()
     if not patient:
         raise HTTPException(status_code=404, detail="Patient profile not found")
@@ -64,12 +64,12 @@ def get_inbox(
     return {"items": items, "total": len(items), "unread_count": unread_count}
 
 
-@router.patch("/{message_id}/read", summary="Mark a doctor message as read")
+@router.patch("/{message_id}/read", response_model=SuccessResponse, summary="Mark a doctor message as read")
 def mark_read(
     message_id: str,
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
-) -> dict:
+) -> SuccessResponse:
     patient = db.query(Patient).filter_by(user_id=current_user["user_id"]).first()
     if not patient:
         raise HTTPException(status_code=404, detail="Patient profile not found")
@@ -87,6 +87,7 @@ def mark_read(
 
 @router.post(
     "/reply",
+    response_model=MessageOut,
     status_code=status.HTTP_201_CREATED,
     summary="Patient replies to a doctor's thread",
 )
@@ -94,7 +95,7 @@ def reply_to_doctor(
     body: ReplyRequest,
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
-) -> dict:
+) -> MessageOut:
     patient = db.query(Patient).filter_by(user_id=current_user["user_id"]).first()
     if not patient:
         raise HTTPException(status_code=404, detail="Patient profile not found")

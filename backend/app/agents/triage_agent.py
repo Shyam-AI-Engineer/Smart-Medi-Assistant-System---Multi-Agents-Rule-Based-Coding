@@ -61,7 +61,7 @@ class TriageAgent:
             }
         """
         try:
-            logger.info(f"Triage agent assessing: {patient_message[:100]}...")
+            logger.info(f"Triage agent assessing message (len={len(patient_message)})")
 
             # Step 1: Call Euri to analyze urgency
             triage_result = self.euri.generate_triage_assessment(
@@ -168,7 +168,7 @@ class TriageAgent:
 
             # Build vital signs assessment message
             vitals_summary = self._format_vitals_summary(vitals, patient_info)
-            logger.debug(f"Vitals summary: {vitals_summary}")
+            logger.debug("Vitals summary built")
 
             # Call Euri to analyze vitals
             assessment = self.euri.generate_triage_assessment(

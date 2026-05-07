@@ -62,7 +62,7 @@ def add_medication(
     patient = _get_patient(db, current_user["user_id"])
     service = MedicationService(db)
     med = service.add_medication(patient.id, payload.model_dump())
-    logger.info("medication.added", extra={"patient_id": patient.id, "med": med.medication_name})
+    logger.info("medication.added", extra={"patient_id": patient.id})
     return MedicationResponse.model_validate(med)
 
 

@@ -1,34 +1,47 @@
 import axios, { AxiosError, type AxiosInstance } from "axios";
-import { auth } from "./auth";
+import { useAuthStore } from "@/stores/authStore";
 
-const baseURL =
-  (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000") + "/api/v1";
-
+// All API calls go through the Next.js proxy (/app/api/proxy/[...path]/route.ts).
+// The proxy reads the httpOnly medi_token cookie and adds the Authorization header
+// server-side, so the JWT is never accessible to client-side JavaScript.
 export const api: AxiosInstance = axios.create({
-  baseURL,
+  baseURL: "/api/proxy",
   timeout: 30_000,
 });
 
 api.interceptors.request.use((config) => {
-  const token = auth.getToken();
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-
   // Only set Content-Type for non-FormData requests
   // FormData needs multipart/form-data, which axios sets automatically
   if (!(config.data instanceof FormData) && !config.headers["Content-Type"]) {
     config.headers["Content-Type"] = "application/json";
   }
-
   return config;
 });
 
+let _refreshing: Promise<boolean> | null = null;
+
+async function tryRefresh(): Promise<boolean> {
+  try {
+    const res = await fetch("/api/auth/refresh", { method: "POST" });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 api.interceptors.response.use(
   (response) => response,
-  (error: AxiosError<{ detail?: string }>) => {
-    if (error.response?.status === 401 && typeof window !== "undefined") {
-      auth.clear();
+  async (error: AxiosError<{ detail?: string }>) => {
+    const originalConfig = error.config as typeof error.config & { _retry?: boolean };
+    if (error.response?.status === 401 && !originalConfig?._retry && typeof window !== "undefined") {
+      originalConfig._retry = true;
+      // Deduplicate concurrent refresh calls
+      _refreshing ??= tryRefresh().finally(() => { _refreshing = null; });
+      const refreshed = await _refreshing;
+      if (refreshed) {
+        return api(originalConfig);
+      }
+      useAuthStore.getState().signOut();
       const path = window.location.pathname;
       if (!path.startsWith("/login")) {
         window.location.href = `/login?next=${encodeURIComponent(path)}`;
@@ -71,6 +84,14 @@ export interface TokenResponse {
   email: string;
   role: "patient" | "doctor" | "nurse" | "admin";
   full_name?: string;
+}
+
+// Returned by the Next.js auth route handlers — no tokens (stored in httpOnly cookies)
+export interface AuthResponse {
+  user_id: string;
+  email: string;
+  role: "patient" | "doctor" | "nurse" | "admin";
+  full_name?: string | null;
 }
 
 export interface VitalRecord {
@@ -184,21 +205,14 @@ export async function sendChatStream(
   onDone: (meta: ChatStreamMeta) => void,
   onError: (msg: string) => void,
 ): Promise<void> {
-  const streamURL =
-    (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000") +
-    "/api/v1/chat/stream";
-
-  const { auth: authLib } = await import("./auth");
-  const token = authLib.getToken();
+  // Proxy adds Authorization header server-side from httpOnly cookie
+  const streamURL = "/api/proxy/chat/stream";
 
   let res: Response;
   try {
     res = await fetch(streamURL, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
   } catch {
@@ -206,12 +220,12 @@ export async function sendChatStream(
     return;
   }
 
-  if (!res.ok) {
+  if (!res.ok || !res.body) {
     onError("AI service unavailable. Please try again.");
     return;
   }
 
-  const reader = res.body!.getReader();
+  const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
 
@@ -543,11 +557,27 @@ export async function uploadReport(file: File): Promise<ReportItem> {
 }
 
 export const endpoints = {
-  // Auth
-  login: (payload: LoginPayload) =>
-    api.post<TokenResponse>("/auth/login", payload).then((r) => r.data),
-  register: (payload: RegisterPayload) =>
-    api.post<TokenResponse>("/auth/register", payload).then((r) => r.data),
+  // Auth — call Next.js route handlers which set httpOnly cookies and return user only
+  login: async (payload: LoginPayload): Promise<AuthResponse> => {
+    const res = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail ?? "Login failed");
+    return data as AuthResponse;
+  },
+  register: async (payload: RegisterPayload): Promise<AuthResponse> => {
+    const res = await fetch("/api/auth/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail ?? "Registration failed");
+    return data as AuthResponse;
+  },
   me: () => api.get("/auth/me").then((r) => r.data),
 
   // Patient

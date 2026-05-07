@@ -6,6 +6,25 @@ No cloud dependency, perfect for development & learning.
 Index structure:
 - faiss_index.bin: Actual vector index (binary)
 - faiss_metadata.json: Document metadata (JSON)
+
+WARNING — SCALABILITY LIMITATION:
+  FAISS stores its index on the LOCAL FILESYSTEM of whichever process runs it.
+  This means:
+    - Running more than one backend replica results in DIVERGENT indexes per instance.
+      RAG responses become non-deterministic — one replica finds a document,
+      another doesn't, depending on which replica received the write.
+    - The index cannot be shared across containers, pods, or machines.
+    - There is no built-in replication, backup, or consistency guarantee.
+
+  This is acceptable for single-instance development and early staging.
+  It is NOT safe for any multi-instance (scaled) production deployment.
+
+  Recommended migration path before horizontal scaling:
+    - pgvector  (add a `vector` column to PostgreSQL — zero new infra)
+    - Qdrant    (open-source, self-hostable, REST/gRPC API)
+    - Pinecone  (managed SaaS, same embedding model works out-of-the-box)
+
+  TODO: Replace FAISS with a scalable vector DB before horizontal scaling.
 """
 
 import os
@@ -37,6 +56,11 @@ class FAISSService:
         # Load or create index
         self.index = self._load_or_create_index()
         self.metadata = self._load_metadata()
+        logger.warning(
+            "FAISS is running in local-disk mode. "
+            "Not suitable for multi-instance deployments — each replica holds an independent copy of the index. "
+            "Migrate to pgvector, Qdrant, or Pinecone before horizontal scaling."
+        )
 
         # Counter for document IDs
         self.next_id = len(self.metadata)

@@ -331,6 +331,50 @@ class ClinicalAgent(BaseAgent):
 
 ---
 
+## Vector Storage (RAG)
+
+### Current Approach — FAISS (Local Disk)
+
+Medical documents are embedded via the Euri API (Gemini Embedding 2, 768 dimensions) and stored in a FAISS flat index on the local filesystem of the backend process.
+
+```
+backend/
+└── data/
+    └── faiss_index/
+        ├── faiss_index.bin      ← binary vector index
+        └── faiss_metadata.json  ← document metadata (source, chunk, timestamp)
+```
+
+At query time the Clinical/RAG agents embed the user's question, search the index for the top-k most similar chunks, and inject that context into the LLM prompt before generating a response.
+
+### Limitations
+
+| Limitation | Impact |
+|------------|--------|
+| **Local filesystem only** | Each backend replica holds its own independent copy of the index |
+| **No replication** | Documents written to replica A are invisible to replica B |
+| **No consistency guarantee** | RAG results become non-deterministic the moment you run ≥ 2 instances |
+| **No built-in backup** | Index corruption means data loss unless you snapshot the data directory manually |
+
+### When Migration Is Required
+
+Migrate **before** any of the following:
+- Deploying more than one backend replica (auto-scaling, blue-green, canary)
+- Moving to a container orchestrator (Kubernetes, ECS, Railway scaled instances)
+- Requiring consistent RAG results across requests
+
+### Recommended Solutions
+
+| Option | Complexity | Notes |
+|--------|-----------|-------|
+| **pgvector** | Low | Add a `vector(768)` column to existing PostgreSQL; zero new infra; same embedding model |
+| **Qdrant** | Medium | Open-source, self-hostable, gRPC + REST; Docker-ready |
+| **Pinecone** | Low | Managed SaaS; the current Euri 768-dim embeddings work without changes |
+
+**Preferred path**: pgvector — it reuses the existing PostgreSQL instance, keeps the data layer unified, and requires no new service to operate.
+
+---
+
 ## Key Design Decisions
 
 | Decision | Why | Trade-off |

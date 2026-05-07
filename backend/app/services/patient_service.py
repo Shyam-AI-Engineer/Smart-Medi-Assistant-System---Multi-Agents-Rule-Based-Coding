@@ -2,7 +2,7 @@
 import logging
 from typing import Dict, Any
 from sqlalchemy.orm import Session
-from fastapi import HTTPException, status
+from app.exceptions import NotFoundError
 from app.models import Patient, User, Vitals
 from app.schemas.patient_schema import PatientProfileUpdate, VitalsCreate
 
@@ -18,10 +18,7 @@ class PatientService:
         """Get the patient profile for a user. Raises 404 if not found."""
         patient = self.db.query(Patient).filter_by(user_id=user_id).first()
         if not patient:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Patient profile not found",
-            )
+            raise NotFoundError("Patient profile not found")
         return patient
 
     def update(self, user_id: str, update: PatientProfileUpdate) -> Patient:

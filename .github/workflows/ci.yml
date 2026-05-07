@@ -61,12 +61,13 @@ jobs:
       - name: Run backend tests
         run: |
           cd backend
-          pytest -v --tb=short
+          pytest -v --tb=short --cov=app --cov-report=term-missing --cov-fail-under=30
+        # Coverage gate: 30% floor (target 70% — raise as the suite grows).
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/smart_medi_test
           REDIS_URL: redis://localhost:6379
-          JWT_SECRET_KEY: test-secret-key-for-ci
-          EURI_API_KEY: test-key
+          JWT_SECRET_KEY: ${{ secrets.CI_JWT_SECRET_KEY || 'ci-only-test-secret-32-chars-long!!' }}
+          EURI_API_KEY: ${{ secrets.EURI_API_KEY }}
           EURI_BASE_URL: https://api.euron.one/api/v1/euri
 
   frontend-tests:

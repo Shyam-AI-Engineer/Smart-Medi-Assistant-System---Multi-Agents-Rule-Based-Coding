@@ -20,6 +20,8 @@ from app.models import Patient, User
 from app.models.appointment import Appointment
 from app.middleware.auth_middleware import get_current_user
 from app.extensions import get_db
+from app.schemas.appointment_schema import AppointmentItem, AppointmentListResponse
+from app.schemas.message_schema import SuccessResponse
 
 logger = logging.getLogger(__name__)
 
@@ -54,11 +56,11 @@ def _appt_dict(a: Appointment, doctor_name: str | None) -> dict:
     }
 
 
-@router.get("/", summary="List patient's own appointments")
+@router.get("/", response_model=AppointmentListResponse, summary="List patient's own appointments")
 def list_appointments(
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
-) -> dict:
+) -> AppointmentListResponse:
     patient = db.query(Patient).filter_by(user_id=current_user["user_id"]).first()
     if not patient:
         raise HTTPException(status_code=404, detail="Patient profile not found")
@@ -82,6 +84,7 @@ def list_appointments(
 
 @router.post(
     "/",
+    response_model=AppointmentItem,
     status_code=status.HTTP_201_CREATED,
     summary="Request a new appointment",
 )
@@ -93,7 +96,7 @@ async def request_appointment(
     attachment: UploadFile | None = File(None),
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
-) -> dict:
+) -> AppointmentItem:
     patient = db.query(Patient).filter_by(user_id=current_user["user_id"]).first()
     if not patient:
         raise HTTPException(status_code=404, detail="Patient profile not found")
@@ -157,12 +160,12 @@ async def request_appointment(
     return _appt_dict(appt, None)
 
 
-@router.delete("/{appointment_id}", summary="Cancel a pending appointment")
+@router.delete("/{appointment_id}", response_model=SuccessResponse, summary="Cancel a pending appointment")
 def cancel_appointment(
     appointment_id: str,
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
-) -> dict:
+) -> SuccessResponse:
     patient = db.query(Patient).filter_by(user_id=current_user["user_id"]).first()
     if not patient:
         raise HTTPException(status_code=404, detail="Patient profile not found")

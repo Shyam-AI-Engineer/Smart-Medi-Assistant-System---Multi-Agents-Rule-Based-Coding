@@ -9,13 +9,20 @@ from fastapi.security import HTTPBearer
 
 logger = logging.getLogger(__name__)
 
-JWT_SECRET = os.getenv("JWT_SECRET_KEY", "dev-secret-change-in-production")
+_JWT_SECRET_RAW = os.getenv("JWT_SECRET_KEY", "")
+_INSECURE_DEFAULTS = {"", "dev-secret-change-in-production", "your-super-secret-key-change-this-in-production-min-32-chars"}
+
+if _JWT_SECRET_RAW in _INSECURE_DEFAULTS:
+    raise RuntimeError(
+        "STARTUP BLOCKED: JWT_SECRET_KEY is missing or set to a known insecure default.\n"
+        "Set a strong random value in your .env file:\n"
+        "  JWT_SECRET_KEY=<run: python -c \"import secrets; print(secrets.token_hex(32))\">"
+    )
+
+JWT_SECRET = _JWT_SECRET_RAW
 JWT_ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
 REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", "7"))
-
-if JWT_SECRET == "dev-secret-change-in-production":
-    logger.warning("Using default JWT_SECRET — set JWT_SECRET_KEY in .env")
 
 
 security = HTTPBearer()

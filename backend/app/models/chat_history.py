@@ -1,7 +1,7 @@
 """Chat history model - conversations between patient and AI."""
 from typing import Optional
 from datetime import datetime
-from sqlalchemy import String, ForeignKey, Text, Integer, Float, DateTime
+from sqlalchemy import String, ForeignKey, Text, Integer, Float, DateTime, Index
 from sqlalchemy.orm import Mapped, mapped_column
 from .base import BaseModel
 
@@ -57,6 +57,11 @@ class ChatHistory(BaseModel):
         nullable=True,
         default=None
     )  # When patient submitted feedback
+
+    __table_args__ = (
+        Index("ix_chat_history_patient_created", "patient_id", "created_at"),
+        Index("ix_chat_history_created_agent", "created_at", "agent_used"),
+    )
 
     def __repr__(self) -> str:
         return (
