@@ -2,10 +2,12 @@
 import os
 import jwt
 import logging
+import uuid
 from typing import Optional, Dict
 from datetime import datetime, timedelta
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer
+from app.utils.cache import cache_get, cache_set, cache_delete
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +30,18 @@ REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", "7"))
 security = HTTPBearer()
 
 
+def is_token_revoked(jti: str) -> bool:
+    """Check if token JTI is in revocation list."""
+    revoked = cache_get(f"revoked_token:{jti}")
+    return revoked is True
+
+
+def revoke_token(jti: str, ttl_seconds: int) -> None:
+    """Add token JTI to revocation list with TTL."""
+    cache_set(f"revoked_token:{jti}", True, ttl=ttl_seconds)
+    logger.info(f"Token revoked: {jti}")
+
+
 def get_current_user(
     credentials = Depends(security),
 ) -> Dict[str, any]:
@@ -39,9 +53,9 @@ def get_current_user(
     def send_message(current_user: dict = Depends(get_current_user)):
         return current_user
 
-    Returns dict with: user_id, email, role, exp
+    Returns dict with: user_id, email, role, jti
 
-    Raises HTTPException 401 if token invalid/expired.
+    Raises HTTPException 401 if token invalid/expired/revoked.
     """
     token = credentials.credentials
 
@@ -50,6 +64,7 @@ def get_current_user(
         user_id: str = payload.get("user_id")
         email: str = payload.get("email")
         role: str = payload.get("role", "patient")
+        jti: str = payload.get("jti")
 
         if user_id is None:
             raise HTTPException(
@@ -58,7 +73,16 @@ def get_current_user(
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
-        return {"user_id": user_id, "email": email, "role": role}
+        # Check if token has been revoked (logged out)
+        if jti and is_token_revoked(jti):
+            logger.warning(f"Token revoked: {jti}")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token has been revoked",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+        return {"user_id": user_id, "email": email, "role": role, "jti": jti}
 
     except jwt.ExpiredSignatureError:
         logger.warning("Token expired")
@@ -105,7 +129,7 @@ def create_access_token(
     role: str = "patient",
     expires_delta: Optional[timedelta] = None,
 ) -> str:
-    """Create JWT access token."""
+    """Create JWT access token with unique JTI for revocation support."""
     if expires_delta is None:
         expires_delta = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
 
@@ -114,6 +138,7 @@ def create_access_token(
         "user_id": user_id,
         "email": email,
         "role": role,
+        "jti": str(uuid.uuid4()),  # Unique token ID for revocation
         "exp": expire,
     }
 
@@ -126,12 +151,13 @@ def create_access_token(
 
 
 def create_refresh_token(user_id: str, email: str) -> str:
-    """Create long-lived JWT refresh token (default 7 days)."""
+    """Create long-lived JWT refresh token (default 7 days) with JTI for revocation."""
     expire = datetime.utcnow() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
     payload = {
         "user_id": user_id,
         "email": email,
         "token_type": "refresh",
+        "jti": str(uuid.uuid4()),  # Unique token ID for revocation
         "exp": expire,
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)

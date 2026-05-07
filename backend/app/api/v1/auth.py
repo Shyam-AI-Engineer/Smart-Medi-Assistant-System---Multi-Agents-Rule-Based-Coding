@@ -1,10 +1,10 @@
-"""Auth routes: register, login, token refresh, current user."""
+"""Auth routes: register, login, token refresh, logout, current user."""
 from fastapi import APIRouter, Depends, Request
 from fastapi.security import HTTPBearer
 from sqlalchemy.orm import Session
 
 from app.extensions import get_db
-from app.middleware.auth_middleware import get_current_user
+from app.middleware.auth_middleware import get_current_user, revoke_token, ACCESS_TOKEN_EXPIRE_MINUTES
 from app.middleware.rate_limit import limiter
 from app.services.auth_service import AuthService
 from app.schemas.auth_schema import RegisterRequest, LoginRequest, TokenResponse, MeResponse
@@ -138,3 +138,40 @@ def get_me(
         is_active=user.is_active,
         created_at=user.created_at,
     )
+
+
+@router.post(
+    "/logout",
+    summary="Logout and revoke current token",
+)
+def logout(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Logout the current user by revoking their access token.
+
+    The token is added to a revocation list with TTL matching token expiry.
+    Attempting to use this token afterward will be rejected.
+
+    Requires a valid access token in the Authorization header.
+    """
+    jti = current_user.get("jti")
+    if jti:
+        # Revoke token with TTL = access token expiry time
+        ttl_seconds = ACCESS_TOKEN_EXPIRE_MINUTES * 60
+        revoke_token(jti, ttl_seconds)
+
+    write_audit(
+        db,
+        user_id=current_user["user_id"],
+        user_email=current_user["email"],
+        user_role=current_user["role"],
+        action="logout",
+        resource_type="auth",
+        ip_address=get_client_ip(request),
+    )
+
+    return {"success": True, "message": "Successfully logged out"}
+
