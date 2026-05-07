@@ -56,7 +56,15 @@ def db(db_engine):
 def client(db):
     """TestClient with get_db overridden to use the test database."""
     def _override_get_db():
-        yield db
+        try:
+            yield db
+            db.commit()  # Commit so audit logs and other writes persist
+        except Exception:
+            db.rollback()
+            raise
+        finally:
+            # Don't close — db is managed by the db fixture
+            pass
 
     fastapi_app.dependency_overrides[get_db] = _override_get_db
     with TestClient(fastapi_app, raise_server_exceptions=False) as tc:
