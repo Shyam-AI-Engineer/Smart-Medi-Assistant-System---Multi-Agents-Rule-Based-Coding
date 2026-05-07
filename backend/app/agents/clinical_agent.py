@@ -81,9 +81,9 @@ class ClinicalAgent:
             )
 
             # Hallucination guardrail: refuse to generate when context is absent or
-            # irrelevant (avg similarity < 0.3 means the knowledge base has nothing
-            # reliable to anchor the answer).
-            if not context_docs or avg_relevance < 0.3:
+            # irrelevant (avg similarity < 0.65 means the knowledge base has insufficient
+            # evidence to anchor a safe medical answer). Medical safety requires high confidence.
+            if not context_docs or avg_relevance < 0.65:
                 logger.warning(
                     "Insufficient retrieval context — returning safe fallback",
                     extra={"doc_count": len(context_docs), "avg_relevance": avg_relevance},

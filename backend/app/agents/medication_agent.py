@@ -1,11 +1,21 @@
-"""Medication Agent - Drug interactions, contraindications, side effects."""
+"""Medication Agent - Drug interactions, contraindications, side effects.
+
+⚠️ IMPORTANT LIMITATION:
+This agent uses a hardcoded database of 7 common medications for demonstration.
+This is NOT a comprehensive drug interaction checker. Real-world use requires:
+- Integration with RxNorm API (https://rxnav.nlm.nih.gov/APIs)
+- FDA drug interaction database
+- Clinical pharmacist review of all interactions
+- For now, ALWAYS recommend patients consult their pharmacist or doctor.
+"""
 import logging
 from typing import Optional, Dict, Any, List
 from app.services.euri_service import get_euri_service
 
 logger = logging.getLogger(__name__)
 
-# Common drug interaction database (rule-based for fast lookup)
+# Common drug interaction database (INCOMPLETE — see disclaimer above)
+# TODO: Replace with RxNorm API integration for production use
 DRUG_INTERACTIONS = {
     "ibuprofen": {
         "amlodipine": {"risk": "MODERATE", "reason": "NSAIDs may reduce effectiveness of blood pressure medications"},
@@ -74,12 +84,21 @@ SIDE_EFFECTS = {
 
 
 class MedicationAgent:
-    """Medication interaction and safety checking agent."""
+    """Medication interaction and safety checking agent.
+
+    ⚠️ DISCLAIMER: Uses a limited hardcoded database (7 drugs only).
+    NOT suitable for comprehensive drug interaction checking.
+    Always recommend patient consult a pharmacist.
+    """
 
     def __init__(self):
         """Initialize medication agent with Euri service."""
         self.euri = get_euri_service()
-        logger.info("MedicationAgent initialized")
+        self.use_limited_database = True  # Flag for incomplete database
+        logger.warning(
+            "MedicationAgent initialized with LIMITED DATABASE (7 drugs only). "
+            "For production, integrate with RxNorm API."
+        )
 
     def check_medication_interactions(
         self,
@@ -145,6 +164,9 @@ class MedicationAgent:
             # Step 5: Get warning signs
             warning_signs = self._get_warning_signs(normalized, overall_risk)
 
+            # Lower confidence score due to incomplete database
+            confidence = 0.45 if self.use_limited_database else 0.92
+
             response = {
                 "interaction_risk": overall_risk,
                 "drugs_identified": normalized,
@@ -152,10 +174,11 @@ class MedicationAgent:
                 "contraindications": contraindications,
                 "overall_risk": overall_risk,
                 "warning_signs": warning_signs,
-                "confidence_score": 0.92,
+                "confidence_score": confidence,  # Low due to limited database
                 "agent_used": "medication",
                 "tokens_used": 250,
                 "disclaimer": self._get_disclaimer(overall_risk),
+                "limited_database": True,  # Flag: only 7 drugs covered
                 "response": self._format_patient_response(
                     detailed_interactions,
                     contraindications,
@@ -479,12 +502,16 @@ class MedicationAgent:
 
     def _get_disclaimer(self, risk_level: str) -> str:
         """Get appropriate disclaimer based on risk level."""
-        base = "⚠️ **DISCLAIMER**: This is not a substitute for professional medical advice."
+        base = (
+            "⚠️ **DISCLAIMER**: This is not a substitute for professional medical advice. "
+            "This tool checks only 7 common medications. **You must consult a pharmacist "
+            "for a complete drug interaction check.**"
+        )
 
         if risk_level == "HIGH":
-            return f"{base}\n**Consult a doctor or pharmacist immediately before taking these medications together.**"
+            return f"{base}\n\n**🚨 URGENT: Do not take these medications together without consulting a doctor or pharmacist immediately.**"
         elif risk_level == "MODERATE":
-            return f"{base}\nConsult your doctor or pharmacist before combining these medications."
+            return f"{base}\n\nConsult your doctor or pharmacist before combining these medications."
 
         return base
 
