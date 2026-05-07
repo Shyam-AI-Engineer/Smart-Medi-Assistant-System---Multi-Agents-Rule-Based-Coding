@@ -17,13 +17,31 @@ import logging
 import sys
 import io
 
-from app.extensions import init_db
 from app.api.v1 import api_router
 from app.middleware.rate_limit import limiter
+from app.middleware.request_id import RequestIDMiddleware, get_request_id
+from app.exceptions import (
+    NotFoundError,
+    ConflictError,
+    AuthenticationError,
+    ForbiddenError,
+    DomainValidationError,
+)
+
+
+class _RequestIDFilter(logging.Filter):
+    """Inject the current request ID into every log record."""
+    def filter(self, record: logging.LogRecord) -> bool:
+        record.request_id = get_request_id()
+        return True
+
 
 # Fix Windows encoding issue: configure logging with UTF-8
 handler = logging.StreamHandler(io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace'))
-handler.setFormatter(logging.Formatter("%(asctime)s [%(name)s] %(levelname)s: %(message)s"))
+handler.setFormatter(logging.Formatter(
+    "%(asctime)s [%(name)s] %(levelname)s [rid=%(request_id)s]: %(message)s"
+))
+handler.addFilter(_RequestIDFilter())
 
 # Configure logging for the application
 logging.basicConfig(
@@ -58,6 +76,26 @@ def create_app() -> FastAPI:
     # EXCEPTION HANDLERS
     # ========================================
 
+    @app.exception_handler(NotFoundError)
+    async def not_found_handler(_request: Request, exc: NotFoundError):
+        return JSONResponse(status_code=404, content={"detail": exc.detail})
+
+    @app.exception_handler(ConflictError)
+    async def conflict_handler(_request: Request, exc: ConflictError):
+        return JSONResponse(status_code=409, content={"detail": exc.detail})
+
+    @app.exception_handler(AuthenticationError)
+    async def authentication_handler(_request: Request, exc: AuthenticationError):
+        return JSONResponse(status_code=401, content={"detail": exc.detail})
+
+    @app.exception_handler(ForbiddenError)
+    async def forbidden_handler(_request: Request, exc: ForbiddenError):
+        return JSONResponse(status_code=403, content={"detail": exc.detail})
+
+    @app.exception_handler(DomainValidationError)
+    async def domain_validation_handler(_request: Request, exc: DomainValidationError):
+        return JSONResponse(status_code=400, content={"detail": exc.detail})
+
     async def validation_exception_handler(_request: Request, exc: RequestValidationError):
         """Return validation errors for debugging."""
         errors = exc.errors()
@@ -91,16 +129,38 @@ def create_app() -> FastAPI:
     # MIDDLEWARE
     # ========================================
 
+    # Request ID — must be outermost so the ID is set before any other middleware logs
+    app.add_middleware(RequestIDMiddleware)
+
     # Rate limiting
     app.state.limiter = limiter
     app.add_middleware(SlowAPIMiddleware)
 
-    # CORS - Allow frontend to call backend
-    cors_origins = os.getenv(
-        "CORS_ORIGINS",
-        "http://localhost:3000,http://localhost:8000"
-    ).split(",")
-    cors_origins = [origin.strip() for origin in cors_origins]
+    # CORS - Allow frontend to call backend.
+    # Supports both JSON array and comma-separated string in CORS_ORIGINS.
+    _cors_raw = os.getenv("CORS_ORIGINS", "")
+    if _cors_raw.strip().startswith("["):
+        import json as _json
+        try:
+            cors_origins = _json.loads(_cors_raw)
+        except Exception:
+            cors_origins = []
+    elif _cors_raw:
+        cors_origins = [o.strip() for o in _cors_raw.split(",") if o.strip()]
+    else:
+        cors_origins = []
+
+    # Always allow local dev and the production Vercel frontend.
+    _always_allowed = [
+        "http://localhost:3000",
+        "http://localhost:8000",
+        "https://smart-medi-frontend.vercel.app",
+    ]
+    for _origin in _always_allowed:
+        if _origin not in cors_origins:
+            cors_origins.append(_origin)
+
+    logger.info(f"CORS allowed origins: {cors_origins}")
 
     app.add_middleware(
         CORSMiddleware,
@@ -116,13 +176,22 @@ def create_app() -> FastAPI:
 
     @app.on_event("startup")
     def startup_event():
-        """Initialize database and services on startup."""
+        """Apply Alembic migrations on startup (skipped in test environment)."""
         logger.info("Starting Smart Medi Assistant API")
+        if os.getenv("ENVIRONMENT") == "test":
+            # Tests create their own in-memory SQLite DB via conftest.py fixtures.
+            logger.info("Test environment: skipping database migration")
+            return
         try:
-            init_db()
-            logger.info("Database initialized")
+            from alembic.config import Config
+            from alembic import command as alembic_command
+            # Use absolute path so this works regardless of cwd (Docker, Railway, etc.)
+            alembic_ini = Path(__file__).parent.parent / "alembic.ini"
+            alembic_cfg = Config(str(alembic_ini))
+            alembic_command.upgrade(alembic_cfg, "head")
+            logger.info("Database migrations applied")
         except Exception as e:
-            logger.error(f"Database initialization failed: {e}")
+            logger.error(f"Database migration failed: {e}")
 
     @app.on_event("shutdown")
     def shutdown_event():
@@ -156,13 +225,48 @@ def create_app() -> FastAPI:
     @app.get(
         "/health",
         summary="Health check",
-        description="Check API and services"
+        description="Check API and dependent services",
     )
     def health():
-        """Overall system health."""
+        """Return liveness + dependency status for load-balancer and monitoring."""
+        from app.extensions import engine, redis_client
+
+        checks: dict = {}
+
+        # Database
+        try:
+            with engine.connect() as conn:
+                conn.execute(__import__("sqlalchemy").text("SELECT 1"))
+            checks["database"] = True
+        except Exception:
+            checks["database"] = False
+
+        # Redis
+        try:
+            checks["redis"] = bool(redis_client and redis_client.ping())
+        except Exception:
+            checks["redis"] = False
+
+        # Euri AI API
+        try:
+            from app.services.euri_service import get_euri_service
+            euri_result = get_euri_service().health_check()
+            checks["euri"] = euri_result.get("status") == "healthy"
+        except Exception:
+            checks["euri"] = False
+
+        # FAISS vector index
+        try:
+            from app.services.faiss_service import get_faiss_service
+            checks["faiss"] = get_faiss_service().health_check()
+        except Exception:
+            checks["faiss"] = False
+
+        all_ok = all(checks.values())
         return {
-            "status": "ok",
+            "status": "ok" if all_ok else "degraded",
             "version": "0.1.0",
+            "services": checks,
         }
 
     return app
