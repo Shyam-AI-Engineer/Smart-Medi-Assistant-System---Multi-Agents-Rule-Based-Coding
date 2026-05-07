@@ -68,6 +68,7 @@ def store_vitals(
     summary="Get vitals history",
 )
 def get_vitals_history(
+    request: Request,
     patient_id: str,
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
@@ -76,6 +77,20 @@ def get_vitals_history(
 ) -> VitalsHistoryResponse:
     """Paginated vitals history for a patient (newest first)."""
     result = VitalsService(db).get_history(patient_id, current_user, limit, offset)
+
+    # Audit logging: PHI access (viewing vitals history)
+    write_audit(
+        db,
+        user_id=current_user["user_id"],
+        user_email=current_user["email"],
+        user_role=current_user["role"],
+        action="view_vitals",
+        resource_type="vitals",
+        resource_id=patient_id,
+        ip_address=get_client_ip(request),
+        details=f"limit={limit} offset={offset} total={result['total']}",
+    )
+
     return VitalsHistoryResponse(
         patient_id=result["patient_id"],
         items=[VitalsHistoryItem.model_validate(v) for v in result["items"]],

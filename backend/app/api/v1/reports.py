@@ -27,6 +27,7 @@ from app.middleware.rate_limit import limiter
 from app.extensions import get_db
 from app.agents.clinical_agent import get_clinical_agent
 from app.services.faiss_service import get_faiss_service
+from app.utils.audit import write_audit, get_client_ip
 
 logger = logging.getLogger(__name__)
 
@@ -174,6 +175,19 @@ async def upload_report(
         db.commit()
         db.refresh(report)
 
+        # Audit logging: PHI access (medical report uploaded)
+        write_audit(
+            db,
+            user_id=current_user["user_id"],
+            user_email=current_user["email"],
+            user_role=current_user["role"],
+            action="upload_report",
+            resource_type="report",
+            resource_id=report.id,
+            ip_address=get_client_ip(request),
+            details=f"filename={file.filename} file_type={file_type} status=done",
+        )
+
         logger.info(
             f"Report uploaded",
             extra={
@@ -199,6 +213,7 @@ async def upload_report(
 
 @router.get("/", response_model=ReportListResponse)
 def list_reports(
+    request: Request,
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> ReportListResponse:
@@ -214,6 +229,19 @@ def list_reports(
         .all()
     )
 
+    # Audit logging: PHI access (viewing report list)
+    write_audit(
+        db,
+        user_id=current_user["user_id"],
+        user_email=current_user["email"],
+        user_role=current_user["role"],
+        action="view_reports",
+        resource_type="report",
+        resource_id=patient.id,
+        ip_address=get_client_ip(request),
+        details=f"total_reports={len(reports)}",
+    )
+
     return ReportListResponse(
         items=[ReportResponse.model_validate(r) for r in reports], total=len(reports)
     )
@@ -221,6 +249,7 @@ def list_reports(
 
 @router.delete("/{report_id}", status_code=status.HTTP_200_OK)
 def delete_report(
+    request: Request,
     report_id: str,
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -249,6 +278,19 @@ def delete_report(
     # Delete from database
     db.delete(report)
     db.commit()
+
+    # Audit logging: PHI deletion (medical report deleted)
+    write_audit(
+        db,
+        user_id=current_user["user_id"],
+        user_email=current_user["email"],
+        user_role=current_user["role"],
+        action="delete_report",
+        resource_type="report",
+        resource_id=report_id,
+        ip_address=get_client_ip(request),
+        details=f"filename={report.filename}",
+    )
 
     logger.info(f"Report deleted: {report_id}")
 

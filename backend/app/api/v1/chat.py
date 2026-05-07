@@ -16,6 +16,7 @@ from app.services.chat_service import ChatService
 from app.middleware.auth_middleware import get_current_user
 from app.extensions import get_db
 from app.middleware.rate_limit import limiter
+from app.utils.audit import write_audit, get_client_ip
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +53,19 @@ def send_message(
 
     service = ChatService(db)
     agent_response = service.handle_message(message=message, user_id=current_user["user_id"])
+
+    # Audit logging: PHI access (patient symptoms/queries sent to AI)
+    write_audit(
+        db,
+        user_id=current_user["user_id"],
+        user_email=current_user["email"],
+        user_role=current_user["role"],
+        action="send_chat",
+        resource_type="chat",
+        ip_address=get_client_ip(request),
+        details=f"agent={agent_response.get('agent_used')} confidence={agent_response.get('confidence_score')}",
+    )
+
     return {
         "response": safe_text(agent_response.get("response", "")),
         "sources": agent_response.get("sources", []),
@@ -65,6 +79,7 @@ def send_message(
 
 @router.get("/history", response_model=ChatHistoryResponse, status_code=status.HTTP_200_OK)
 def get_chat_history(
+    request: Request,
     limit: int = 20,
     offset: int = 0,
     current_user: dict = Depends(get_current_user),
@@ -82,6 +97,20 @@ def get_chat_history(
         raise HTTPException(status_code=404, detail="Patient profile not found")
 
     history = ChatService(db).get_chat_history(patient_id=patient.id, limit=limit, offset=offset)
+
+    # Audit logging: PHI access (viewing chat history)
+    write_audit(
+        db,
+        user_id=current_user["user_id"],
+        user_email=current_user["email"],
+        user_role=current_user["role"],
+        action="view_chat_history",
+        resource_type="chat",
+        resource_id=patient.id,
+        ip_address=get_client_ip(request),
+        details=f"limit={limit} offset={offset} total={history['total']}",
+    )
+
     return ChatHistoryResponse(
         items=history["items"],
         total=history["total"],
@@ -112,6 +141,20 @@ def submit_feedback(
     )
     if not success:
         raise HTTPException(status_code=404, detail="Chat message not found")
+
+    # Audit logging: feedback submission
+    write_audit(
+        db,
+        user_id=current_user["user_id"],
+        user_email=current_user["email"],
+        user_role=current_user["role"],
+        action="submit_feedback",
+        resource_type="chat",
+        resource_id=feedback_request.chat_id,
+        ip_address=get_client_ip(request),
+        details=f"feedback={feedback_request.feedback}",
+    )
+
     return {"success": True, "feedback": feedback_request.feedback}
 
 
@@ -127,6 +170,18 @@ def send_message_stream(
     message = chat_request.message.strip()
     if not message:
         raise HTTPException(status_code=400, detail="Message cannot be empty")
+
+    # Log access at start of stream
+    write_audit(
+        db,
+        user_id=current_user["user_id"],
+        user_email=current_user["email"],
+        user_role=current_user["role"],
+        action="send_chat_stream",
+        resource_type="chat",
+        ip_address=get_client_ip(request),
+        details="stream_started",
+    )
 
     service = ChatService(db)
 
