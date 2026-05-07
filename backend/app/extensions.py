@@ -1,9 +1,8 @@
 """Database, Redis, and external service initialization."""
 import os
 from typing import Generator
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
-from sqlalchemy.pool import NullPool, QueuePool
 import redis
 
 # ============================================================================
@@ -14,6 +13,10 @@ DATABASE_URL = os.getenv(
     "DATABASE_URL",
     "postgresql://postgres:postgres@localhost:5432/smart_medi_dev"
 )
+# Railway (and some cloud providers) give postgres:// URLs.
+# SQLAlchemy 2.0 dropped the postgres:// dialect alias — must be postgresql://
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
 # ✅ Create engine with connection pooling
 # In development: use QueuePool (default, good for testing)
@@ -80,11 +83,10 @@ try:
         REDIS_URL,
         encoding="utf-8",
         decode_responses=True,
-        socket_connect_timeout=2,  # Quick timeout
+        socket_connect_timeout=2,
     )
-    # Test connection
     redis_client.ping()
-except (redis.ConnectionError, redis.TimeoutError, Exception) as e:
+except Exception as e:
     print(f"WARNING: Redis not available ({type(e).__name__}) - caching disabled")
     redis_client = None
 
@@ -99,27 +101,14 @@ def get_cache():
 # ============================================================================
 
 def init_db():
-    """
-    Create all tables from models.
+    """Create all tables directly from models — FOR TESTS ONLY.
 
-    Call this once at startup:
-        from app.extensions import init_db
-        init_db()
-
-    This creates tables for:
-    - users
-    - patients
-    - vitals
-    - chat_history
-    - audit_logs
-
-    Tables are created from BaseModel subclasses.
+    Production startup uses Alembic migrations (see app/__init__.py startup_event).
+    This function is retained for the pytest fixtures in tests/conftest.py which
+    spin up an in-memory SQLite database and bypass the Alembic runner.
     """
     from app.models import BaseModel  # Import here to avoid circular imports
-
-    print("Initializing database tables...")
     BaseModel.metadata.create_all(bind=engine)
-    print("Database tables initialized")
 
 
 # ============================================================================
