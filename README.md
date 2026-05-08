@@ -4,6 +4,12 @@
 > FastAPI Backend + Next.js Frontend | HIPAA-Ready Security | Single-Tenant Architecture  
 > *Advanced AI-driven clinical decision support with real-time vitals monitoring*
 
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-smart--medi--frontend.vercel.app-blue?logo=vercel&style=flat-square)](https://smart-medi-frontend.vercel.app)
+[![API Docs](https://img.shields.io/badge/API%20Docs-Railway-purple?logo=railway&style=flat-square)](https://smart-medi-assistant-system-multi-agents-rule-production.up.railway.app/docs)
+[![Tests](https://img.shields.io/badge/Tests-24%2B%20Passing-brightgreen?logo=pytest&style=flat-square)](#)
+[![FastAPI](https://img.shields.io/badge/FastAPI-Python%203.11-009688?logo=fastapi&style=flat-square)](https://fastapi.tiangolo.com)
+[![Next.js](https://img.shields.io/badge/Next.js-14+-black?logo=nextdotjs&style=flat-square)](https://nextjs.org)
+
 ---
 
 ## 🎯 System Overview
@@ -20,46 +26,68 @@ Smart Medi Assistant is an enterprise medical AI platform that helps patients ge
 
 ---
 
+## 🌐 Live Demo
+
+| Resource | URL |
+|----------|-----|
+| **🎯 Frontend App** | https://smart-medi-frontend.vercel.app |
+| **⚙️ Backend API** | https://smart-medi-assistant-system-multi-agents-rule-production.up.railway.app |
+| **📖 API Documentation** | https://smart-medi-assistant-system-multi-agents-rule-production.up.railway.app/docs |
+
+> **Test the live app:** Register with any email address at the frontend URL above. No real credentials needed.
+
+---
+
 ## 🏗️ Architecture
 
-### System Diagram
+### System Diagram (Interactive)
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                  Next.js Frontend (Vercel)                  │
-│        Patient Portal | Doctor Dashboard | Admin Panel       │
-│  - Real-time vitals display                                 │
-│  - Chat interface with streaming responses                  │
-│  - Error boundaries (no blank screens)                       │
-└──────────────────────────┬──────────────────────────────────┘
-                           │ HTTPS/JSON
-                           ▼
-┌──────────────────────────────────────────────────────────────┐
-│              FastAPI Backend (Railway)                       │
-│                                                              │
-│  ┌──────────────┐  ┌────────────┐  ┌──────────────────┐   │
-│  │   API Routes │  │  Services  │  │    Middleware    │   │
-│  │ (Auth, Chat, │  │ (Business  │  │ (Auth, Rate-    │   │
-│  │  Vitals)     │  │ Logic)     │  │  Limit, Audit)   │   │
-│  └──────────────┘  └────────────┘  └──────────────────┘   │
-│           ↓                ↓                ↓                │
-│  ┌───────────────────────────────────────────────────┐     │
-│  │         Agent Orchestration Layer                 │     │
-│  │  ┌──────────┬──────────┬──────────┐ ┌──────────┐ │     │
-│  │  │Clinical  │RAG Agent │ Triage   │ │Medication│ │     │
-│  │  │Agent     │(FAISS)   │ Agent    │ │ Agent    │ │     │
-│  │  └──────────┴──────────┴──────────┘ └──────────┘ │     │
-│  │  Orchestrator → Routes intent to specialists    │     │
-│  └───────────────────────────────────────────────────┘     │
-│           ↓              ↓              ↓                    │
-└───────────┼──────────────┼──────────────┼──────────────────┘
-            │              │              │
-    ┌───────┴──────┬───────┴──────┬──────┴────────┐
-    ▼              ▼              ▼               ▼
-┌─────────────┐ ┌──────────┐ ┌────────┐ ┌──────────────┐
-│ Euri API    │ │PostgreSQL│ │ Redis  │ │ FAISS Index  │
-│(GPT-4o-mini)│ │(RDS)     │ │(Cache) │ │(Vectors)     │
-└─────────────┘ └──────────┘ └────────┘ └──────────────┘
+```mermaid
+graph TB
+    subgraph Frontend["🖥️ Next.js Frontend (Vercel)"]
+        UI["Patient Portal<br/>Doctor Dashboard<br/>Admin Panel<br/>Real-time Vitals Display"]
+    end
+    
+    subgraph Backend["⚙️ FastAPI Backend (Railway)"]
+        Routes["API Routes<br/>(Auth, Chat, Vitals)"]
+        Services["Services Layer<br/>(Business Logic)"]
+        Middleware["Middleware<br/>(Auth, Rate-Limit, Audit)"]
+        
+        Routes --> Services
+        Routes --> Middleware
+    end
+    
+    subgraph Agents["🤖 Agent Orchestration"]
+        Orch["Orchestrator<br/>(Intent Routing)"]
+        Clinical["Clinical Agent"]
+        RAG["RAG Agent<br/>(FAISS)"]
+        Triage["Triage Agent"]
+        Med["Medication Agent"]
+        
+        Orch --> Clinical
+        Orch --> RAG
+        Orch --> Triage
+        Orch --> Med
+    end
+    
+    subgraph Data["💾 Data & AI"]
+        DB["PostgreSQL<br/>(User Data)"]
+        Cache["Redis<br/>(Session Cache)"]
+        FAISS["FAISS<br/>(Vector DB)"]
+        Euri["Euri API<br/>(GPT-4o-mini)"]
+    end
+    
+    UI -->|HTTPS/JSON| Backend
+    Services --> Agents
+    Services --> DB
+    Services --> Cache
+    RAG --> FAISS
+    Agents --> Euri
+    
+    style Frontend fill:#e1f5ff
+    style Backend fill:#f3e5f5
+    style Agents fill:#fff3e0
+    style Data fill:#e8f5e9
 ```
 
 ### Data Flow: Chat Message → Response
@@ -94,6 +122,45 @@ Smart Medi Assistant is an enterprise medical AI platform that helps patients ge
    - HTTP 200 with response + sources + confidence
    - Front shows sources, confidence, agent name
 ```
+
+---
+
+## 📸 Screenshots
+
+| Dashboard | AI Chat Interface |
+|-----------|------------------|
+| ![Dashboard](docs/images/dashboard.png) | ![Chat](docs/images/chat.png) |
+| Patient dashboard with vitals overview | Medical AI chat with confidence scoring |
+
+| Vitals Monitoring | API Documentation |
+|-------------------|------------------|
+| ![Vitals](docs/images/vitals.png) | ![API Docs](docs/images/api-docs.png) |
+| Real-time vital signs tracking | Swagger API documentation |
+
+> **To add screenshots:**
+> 1. Open https://smart-medi-frontend.vercel.app
+> 2. Register with a test email
+> 3. Navigate to each page (dashboard, chat, vitals)
+> 4. Take screenshots (use Print Screen or DevTools)
+> 5. Save to `docs/images/` with names: `dashboard.png`, `chat.png`, `vitals.png`, `api-docs.png`
+
+---
+
+## 🎬 Demo Video
+
+<!-- Add demo video after recording and uploading -->
+
+**[▶ Watch Demo Video](#)** *(Coming soon — record via Loom or OBS)*
+
+**What to show in demo (5-7 minutes):**
+1. **Login & Dashboard** (30s) — Register, view patient dashboard
+2. **AI Chat Demo** (2min) — Ask medical question, show confidence score, view sources
+3. **Vitals Monitoring** (1min) — Enter vitals, view charts and trends
+4. **Medical Report** (30s) — Upload and analyze medical document
+5. **Admin Features** (30s) — View audit logs of PHI access
+6. **API Docs** (30s) — Show Swagger documentation
+
+> **Tools to record:** [Loom](https://loom.com) (free, no edit needed) or [OBS](https://obsproject.com) (advanced)
 
 ---
 
