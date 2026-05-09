@@ -14,9 +14,11 @@ class TrailingSlashMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
 
+        # Only redirect GET requests (not POST/PUT/DELETE which may not handle redirects well)
         # Only apply to API routes that typically need trailing slashes
         # (not files, not root, not already have trailing slash)
         if (
+            request.method == "GET" and
             path.startswith('/api/') and
             not path.endswith('/') and
             path != '/' and
