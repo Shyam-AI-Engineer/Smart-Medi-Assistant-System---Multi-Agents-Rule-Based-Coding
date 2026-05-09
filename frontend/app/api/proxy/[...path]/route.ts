@@ -23,6 +23,7 @@ async function handler(
       method: req.method,
       headers,
       body: hasBody ? req.body : undefined,
+      credentials: "include",
       // Required for streaming request bodies (file uploads, audio)
       // @ts-expect-error -- duplex not yet in TypeScript fetch types
       duplex: "half",

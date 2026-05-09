@@ -31,8 +31,8 @@ export async function POST(req: NextRequest) {
   const response = NextResponse.json({ ok: true });
   response.cookies.set("medi_token", data.access_token, {
     httpOnly: true,
-    secure: IS_PROD,
-    sameSite: "strict",
+    secure: true,
+    sameSite: "none",
     path: "/",
     maxAge: 30 * 60,
   });

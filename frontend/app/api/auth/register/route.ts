@@ -37,8 +37,8 @@ export async function POST(req: NextRequest) {
 
   response.cookies.set("medi_token", data.access_token, {
     httpOnly: true,
-    secure: IS_PROD,
-    sameSite: "strict",
+    secure: true,
+    sameSite: "none",
     path: "/",
     maxAge: 30 * 60,
   });
@@ -46,8 +46,8 @@ export async function POST(req: NextRequest) {
   if (data.refresh_token) {
     response.cookies.set("medi_refresh", data.refresh_token, {
       httpOnly: true,
-      secure: IS_PROD,
-      sameSite: "strict",
+      secure: true,
+      sameSite: "none",
       path: "/",
       maxAge: 7 * 24 * 60 * 60,
     });
