@@ -20,6 +20,7 @@ import io
 from app.api.v1 import api_router
 from app.middleware.rate_limit import limiter
 from app.middleware.request_id import RequestIDMiddleware, get_request_id
+from app.middleware.trailing_slash import TrailingSlashMiddleware
 from app.exceptions import (
     NotFoundError,
     ConflictError,
@@ -69,7 +70,7 @@ def create_app() -> FastAPI:
         docs_url="/docs",
         redoc_url="/redoc",
         openapi_url="/openapi.json",
-        redirect_slashes=False,
+        redirect_slashes=True,
     )
 
     # ========================================
@@ -131,6 +132,9 @@ def create_app() -> FastAPI:
 
     # Request ID — must be outermost so the ID is set before any other middleware logs
     app.add_middleware(RequestIDMiddleware)
+
+    # Trailing slash redirect — catch 404s and retry with trailing slash
+    app.add_middleware(TrailingSlashMiddleware)
 
     # Rate limiting
     app.state.limiter = limiter
